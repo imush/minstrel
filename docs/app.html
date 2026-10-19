@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Using the app — Minstrel Player</title>
+<meta name="description" content="Install Minstrel Player and use it to browse your UPnP/DLNA media server and play on your phone or on network players at home.">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta property="og:image" content="https://minstrelplayer.org/social.png">
+<meta property="og:site_name" content="Minstrel Player">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="mark" viewBox="0 0 120 120"><path d="M60 100 C 32 100, 22 80, 28 58 C 32 42, 27 30, 18 20" fill="none" stroke="#E8A84A" stroke-width="8" stroke-linecap="round"/><path d="M60 100 C 88 100, 98 80, 92 58 C 88 42, 93 30, 102 20" fill="none" stroke="#E8A84A" stroke-width="8" stroke-linecap="round"/><circle cx="18" cy="20" r="6.5" fill="#E8A84A"/><circle cx="102" cy="20" r="6.5" fill="#E8A84A"/><path d="M45 86 V77 M55 86 V67 M65 86 V57 M75 86 V47" fill="none" stroke="#F3EBDD" stroke-width="7" stroke-linecap="round"/></symbol></svg>
+
+<div class="dark">
+  <div class="wrap">
+    <nav aria-label="Main">
+      <a class="brand" href="/">
+        <svg viewBox="0 0 120 120" aria-hidden="true"><use href="#mark"/></svg>
+        minstrel
+      </a>
+      <ul>
+        <li><a href="app" aria-current="page">The app</a></li>
+        <li><a href="launchpad">Launchpad</a></li>
+        <li class="optional"><a href="https://github.com/imush/minstrel">GitHub</a></li>
+      </ul>
+    </nav>
+  </div>
+</div>
+
+<main class="page">
+  <img class="page-icon" src="icon.svg" alt="" width="72" height="72">
+  <p class="eyebrow">Guide</p>
+  <h1>Using the app</h1>
+  <p class="meta">At home, Minstrel needs nothing but your media server.</p>
+
+  <p>Minstrel is a UPnP/DLNA <em>control point</em>: it finds the media servers on your network, lets you browse them, and plays what you pick, either on the phone itself or on a network player such as a streamer, an amplifier or a smart speaker. Nothing to install at home besides the media server you already have.</p>
+
+  <h2 id="install">1. Install</h2>
+  <ul>
+    <li><strong>Android</strong>: Google Play. <em>Coming soon.</em></li>
+    <li><strong>iPhone</strong>: the App Store, as “Minstrel Player”. <em>Coming soon.</em></li>
+  </ul>
+  <p>Until then, developers can build it from <a href="https://github.com/imush/minstrel">the source on GitHub</a> with Flutter.</p>
+
+  <h2 id="first-start">2. First start</h2>
+  <p>Connect the phone to the same Wi-Fi as your media server and open Minstrel.</p>
+  <ul>
+    <li><strong>iPhone</strong>: allow <em>Local Network</em> access when asked. Without it iOS hides your network from the app. To change it later: Settings → Privacy &amp; Security → Local Network → Minstrel.</li>
+    <li><strong>Android</strong>: allow notifications if asked, so playback controls appear on the lock screen.</li>
+  </ul>
+  <p>The main screen lists what Minstrel found by itself:</p>
+  <ul>
+    <li><strong>Music servers</strong>: MinimServer, MiniDLNA, Jellyfin, Plex, Serviio, Asset, a NAS's own DLNA server and so on.</li>
+    <li><strong>Play on</strong>: network players that accept UPnP/DLNA or OpenHome, such as streamers and many amplifiers and speakers.</li>
+  </ul>
+  <p>Pull down to search again. Servers and players appear within a few seconds.</p>
+
+  <h2 id="browse">3. Browse and play on the phone</h2>
+  <ol>
+    <li>Tap a server. You see its own menu: folders, albums, artists, genres, whatever the server offers.</li>
+    <li>Tap a track to play the album from that track, or use <strong>Play all</strong>. The ⋮ menu has <strong>Play next</strong> and <strong>Add to queue</strong>.</li>
+    <li>The bar at the bottom shows what's playing; tap it for the full player and the <strong>Queue</strong>.</li>
+  </ol>
+  <p>Playback continues with the screen off and from the lock screen, headphones and Bluetooth controls. The queue is kept when you close the app.</p>
+
+  <h2 id="players">4. Play on a network player</h2>
+  <ol>
+    <li>Tap the speaker button (<strong>Play on</strong>) in the player or the top bar.</li>
+    <li>Choose a player. The queue and position move to it; the music now streams from the server straight to the player, and the phone is only the remote.</li>
+    <li>To bring it back, choose <strong>This device</strong>.</li>
+  </ol>
+  <p>If you open Minstrel later, or on another phone, it picks up what the player is playing.</p>
+  <p>Some players only take one track at a time. For those, Minstrel feeds the next track itself, and keeps doing so in the background by playing silence while such a queue is on (Settings → <em>Keep speaker queues going in the background</em>).</p>
+
+  <h2 id="settings">Settings</h2>
+  <ul>
+    <li><strong>Quality</strong>: <em>Best available</em> plays the original files, lossless where the player supports it. <em>Data saver</em> picks the smallest version the server already offers, for mobile data.</li>
+  </ul>
+
+  <h2 id="later">Coming later</h2>
+  <ul>
+    <li><strong>Android Auto and CarPlay.</strong> Minstrel among the car's audio apps: Recent (folders you played from) and Library (your servers), with search and voice (“play <em>album</em> on Minstrel”). Audio only, played from the phone. Away from your Wi-Fi the car reaches your music through <a href="launchpad">the launchpad</a>.</li>
+    <li><strong>Transcoding.</strong> Converting lossless files to a compact format on the way, for mobile data and slow connections. Until then, data saver can only choose among the versions your server already provides.</li>
+  </ul>
+
+  <h2 id="vpn">Over a VPN</h2>
+  <p>If you already reach home with a VPN, discovery can't see across it. Use <strong>Add server by address</strong> on the main screen and enter the server's description URL, such as <code>http://192.168.1.9:9791/…/device.xml</code> (your server's settings or log usually show it).</p>
+
+  <h2 id="away">Away from home</h2>
+  <p>To play your library over mobile data without a VPN, set up <a href="launchpad">minstrel-launchpad</a> at home and pair the phone with it (<strong>Add home</strong>). Its servers then appear with “via <em>home name</em>”, and the app switches between the direct connection at home and the launchpad outside by itself.</p>
+
+  <h2 id="trouble">If something isn't found</h2>
+  <ul>
+    <li><strong>Same network?</strong> Guest Wi-Fi and some mesh systems keep devices apart (“client isolation”), which hides servers.</li>
+    <li><strong>Multicast.</strong> Discovery uses SSDP multicast. Routers with IGMP snooping misconfigured, or Wi-Fi “multicast to unicast” disabled, can drop it. Try the server's address with <em>Add server by address</em>.</li>
+    <li><strong>iPhone</strong>: check Local Network access for Minstrel (see above).</li>
+    <li><strong>Firewall</strong> on the server's computer: allow its UPnP/DLNA ports and UDP 1900.</li>
+  </ul>
+  <p>Still stuck? Open an <a href="https://github.com/imush/minstrel/issues">issue on GitHub</a> with your server and player models.</p>
+</main>
+
+<footer class="dark">
+  <div class="wrap">
+    <span class="footer-brand"><svg viewBox="0 0 120 120" aria-hidden="true"><use href="#mark"/></svg>© 2026 Minstrel Player · BSD 3-Clause</span>
+    <span><a href="/">Home</a> · <a href="privacy">Privacy</a> · <a href="https://github.com/imush/minstrel/issues">Contact</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

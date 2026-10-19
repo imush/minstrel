@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Setting up the launchpad — Minstrel Player</title>
+<meta name="description" content="Install minstrel-launchpad at home to play your UPnP/DLNA library from the Minstrel app anywhere: direct mode with a static IP or dynamic DNS, Headscale coming soon.">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta property="og:image" content="https://minstrelplayer.org/social.png">
+<meta property="og:site_name" content="Minstrel Player">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="mark" viewBox="0 0 120 120"><path d="M60 100 C 32 100, 22 80, 28 58 C 32 42, 27 30, 18 20" fill="none" stroke="#E8A84A" stroke-width="8" stroke-linecap="round"/><path d="M60 100 C 88 100, 98 80, 92 58 C 88 42, 93 30, 102 20" fill="none" stroke="#E8A84A" stroke-width="8" stroke-linecap="round"/><circle cx="18" cy="20" r="6.5" fill="#E8A84A"/><circle cx="102" cy="20" r="6.5" fill="#E8A84A"/><path d="M45 86 V77 M55 86 V67 M65 86 V57 M75 86 V47" fill="none" stroke="#F3EBDD" stroke-width="7" stroke-linecap="round"/></symbol></svg>
+
+<div class="dark">
+  <div class="wrap">
+    <nav aria-label="Main">
+      <a class="brand" href="/">
+        <svg viewBox="0 0 120 120" aria-hidden="true"><use href="#mark"/></svg>
+        minstrel
+      </a>
+      <ul>
+        <li><a href="app">The app</a></li>
+        <li><a href="launchpad" aria-current="page">Launchpad</a></li>
+        <li class="optional"><a href="https://github.com/imush/minstrel-launchpad">GitHub</a></li>
+      </ul>
+    </nav>
+  </div>
+</div>
+
+<main class="page">
+  <img class="page-icon" src="icon.svg" alt="" width="72" height="72">
+  <p class="eyebrow">Guide</p>
+  <h1>Setting up the launchpad</h1>
+  <p class="meta">For playing your library away from home. Not needed on your own Wi-Fi.</p>
+
+  <p><strong>minstrel-launchpad</strong> is a small program that runs at home, next to your media server. Away from home, the Minstrel app connects to it, and it passes the app's requests to your media servers and nothing else. Only devices you paired get in; each has its own key, and you can remove any of them.</p>
+
+  <p>It connects to the app in one of two ways:</p>
+  <ul>
+    <li><strong>Direct</strong>: the app connects straight to your home through one port on your router. Needs a fixed way to find your home on the internet: a <em>static IP</em> or a <em>dynamic DNS</em> name.</li>
+    <li><strong>Headscale</strong>: <em>coming soon</em>. For homes that can't open a port (see <a href="#headscale">below</a>).</li>
+  </ul>
+
+  <h2 id="where">1. Choose where it runs</h2>
+  <p>Anything that stays on and sits on the same network as your media server: the NAS itself, a router, a Raspberry Pi, a home server or an always-on computer. It needs very little: one small program, about 15&nbsp;MB of memory.</p>
+  <p>It must be able to see the media server's network directly. In Docker, use host networking; in a NAS jail or VM, give it its own address on the home network (bridged, not NAT).</p>
+  <p>Give the machine a <strong>fixed address on your home network</strong> (a DHCP reservation on the router, or a static address outside the DHCP range): your router's port forwarding points at it.</p>
+
+  <h2 id="install">2. Install</h2>
+  <p>Ready-made downloads come with the first release. Until then, install it one of these ways:</p>
+
+  <h3>Docker (most NAS boxes)</h3>
+  <pre><code>docker build -t minstrel-launchpad https://github.com/imush/minstrel-launchpad.git
+docker run -d --name launchpad --network host --restart unless-stopped \
+  -v launchpad:/data minstrel-launchpad
+docker logs launchpad          # shows the console's setup link</code></pre>
+  <p>Host networking is required, so it can discover your media servers.</p>
+
+  <h3>Linux (Raspberry Pi, home server)</h3>
+  <p>With <a href="https://go.dev/dl/">Go</a> installed:</p>
+  <pre><code>GOBIN=/tmp go install github.com/imush/minstrel-launchpad@latest
+sudo install -m 755 /tmp/minstrel-launchpad /usr/local/bin/
+sudo curl -o /etc/systemd/system/minstrel-launchpad.service \
+  https://raw.githubusercontent.com/imush/minstrel-launchpad/main/contrib/linux/minstrel-launchpad.service
+sudo systemctl enable --now minstrel-launchpad
+journalctl -u minstrel-launchpad    # shows the console's setup link</code></pre>
+  <p>To build for another machine (a Pi, a NAS), set <code>GOOS</code> and <code>GOARCH</code>, for example <code>GOOS=linux GOARCH=arm64</code>, and copy the program over.</p>
+
+  <h3>FreeBSD, TrueNAS CORE jail, OPNsense, pfSense</h3>
+  <p>On TrueNAS CORE, create a jail with <em>VNET</em> on, a fixed IPv4 address on your home network (bridged, as with your other jails), and auto-start. Build the program for FreeBSD on any computer with Go:</p>
+  <pre><code>git clone https://github.com/imush/minstrel-launchpad && cd minstrel-launchpad
+GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 go build -o minstrel-launchpad .</code></pre>
+  <p>Copy <code>minstrel-launchpad</code> to <code>/usr/local/bin/</code> and <code>contrib/freebsd/launchpad</code> to <code>/usr/local/etc/rc.d/</code> in the jail, then inside it:</p>
+  <pre><code>chmod 755 /usr/local/bin/minstrel-launchpad /usr/local/etc/rc.d/launchpad
+pw useradd launchpad -d /nonexistent -s /usr/sbin/nologin
+sysrc launchpad_enable=YES
+service launchpad start
+cat /var/log/launchpad.log          # shows the console's setup link</code></pre>
+
+  <h3>macOS or Windows</h3>
+  <p>Fine on a computer that already runs your media server and stays on. Build it with Go as above and run <code>minstrel-launchpad serve</code>, at login or as a service.</p>
+
+  <h2 id="console">3. Open the console</h2>
+  <p>The launchpad's web console is at <code>http://<em>its address</em>:7444</code>, reachable from your home network only.</p>
+  <ol>
+    <li>Open the <strong>setup link</strong> from its log (it's valid for an hour; restarting the launchpad prints a new one).</li>
+    <li>Choose a <strong>console password</strong>. It protects the console only, so guests on your Wi-Fi can't pair themselves; the app never asks for it.</li>
+    <li>Give the home a <strong>Name</strong>, the way the app should show it, such as “Lake house”.</li>
+    <li>Check <strong>Media servers</strong>: yours should be listed. If one is missing, add its description URL by hand.</li>
+  </ol>
+
+  <h2 id="direct">4. Direct mode: reach home from outside</h2>
+  <p>The app needs an address on the internet that always leads to your home. That's one of:</p>
+  <ul>
+    <li><strong>A static IP</strong> from your internet provider. Use it as is.</li>
+    <li><strong>A dynamic DNS name</strong>, if your IP changes from time to time (most home connections). A dynamic DNS service gives you a name like <code>myhome.example.net</code> and keeps it pointed at your current IP. Many routers update it themselves (pfSense and OPNsense: Services → Dynamic DNS; most consumer routers have a DDNS page); otherwise run a client such as <code>ddclient</code> at home. Providers include your own domain's DNS host, DuckDNS, No-IP, Dynu and others.</li>
+  </ul>
+  <p><strong>Then forward a port</strong> on your router: TCP, from an outside port of your choice to the launchpad's address, port <strong>7443</strong>.</p>
+  <ul>
+    <li><strong>443</strong> is the best outside port if it's free: hotel, office and some mobile networks block everything else.</li>
+    <li><strong>Never forward 7444</strong>, the console. It refuses outside visitors anyway.</li>
+    <li>On pfSense or OPNsense: Firewall → NAT → Port Forward → Add; interface WAN, protocol TCP, destination <em>WAN address</em> and your outside port, redirect target the launchpad's address and port 7443; keep “add associated filter rule”.</li>
+  </ul>
+  <p><strong>Finally, tell the launchpad</strong>: on the console under <em>Outside access → Direct</em>, enter the static IP or dynamic DNS name with the outside port, for example <code>myhome.example.net:443</code>, and save. Paired phones learn it the next time they connect at home; new invitations include it.</p>
+
+  <h3>Check it</h3>
+  <p>With Wi-Fi off on your phone, open <code>https://myhome.example.net:443/</code> in its browser. A certificate warning followed by “404 page not found” means it works: that's the launchpad, which shows nothing to strangers. (Testing from inside your home may fail even when all is well: many routers don't loop back to their own public address.)</p>
+
+  <h3>When direct mode can't work</h3>
+  <ul>
+    <li><strong>Carrier-grade NAT.</strong> If the address your router shows as its WAN IP is different from the one sites like “what is my IP” report, or starts with <code>100.64</code> to <code>100.127</code>, your provider shares one public address among many homes, and no port can be opened. Ask the provider for a public IP, or wait for Headscale mode.</li>
+    <li><strong>Two routers.</strong> If your router sits behind your provider's router, forward the port on both, or put the provider's box in bridge mode.</li>
+  </ul>
+
+  <h2 id="pair">5. Pair your devices</h2>
+  <p>On the console, under <em>Pair a device</em>, enter who it's for and choose how long the invitation is valid:</p>
+  <ul>
+    <li><strong>10 minutes</strong>: a QR code to scan right away. In the app, tap <strong>Add home</strong> (the house with a +) and scan it.</li>
+    <li><strong>1 day or 7 days</strong>: a pairing file to send by email or chat. On the phone, open it in Minstrel with <strong>Add home → Open pairing file</strong>.</li>
+  </ul>
+  <p>Each invitation works once. The console lists <em>Paired devices</em> with when each last connected and from where; <em>Revoke</em> removes one. In the app, the home appears under <strong>Homes</strong>; ⋮ → <strong>Rename</strong> names it just on that phone.</p>
+
+  <h2 id="headscale">Headscale mode <small class="soon">Coming soon</small></h2>
+  <p>For homes behind carrier-grade NAT, or anyone who'd rather not open a port. The launchpad and your phones join a private network run by <a href="https://headscale.net/">Headscale</a>, a self-hosted, open-source coordination server compatible with Tailscale clients. Your home then needs no open port and no public address; the connection is end-to-end encrypted, and a relay is used only when a direct path can't be found. You'll be able to run your own Headscale server, or use one someone you trust runs. Watch <a href="https://github.com/imush/minstrel-launchpad">the repository</a> for it.</p>
+
+  <h2 id="safety">How it's kept safe</h2>
+  <ul>
+    <li>The app trusts only your launchpad's own key, pinned at pairing, so no one in between can pose as it.</li>
+    <li>Each device has its own token, revocable on the console. Requests without one get nothing but “404”, and repeated failures are blocked.</li>
+    <li>It relays only to the media servers it found or you listed, never as an open proxy.</li>
+    <li>The console answers the home network only, and is password-protected.</li>
+    <li>Back up its data directory: it holds the key. Lose it and every device must pair again.</li>
+  </ul>
+
+  <h2 id="trouble">Troubleshooting</h2>
+  <ul>
+    <li><strong>“Can't reach home” in the app</strong>: the Homes list shows each address tried and what happened. “No answer” on the outside address usually means the port forward or dynamic DNS isn't right; check with the browser test above.</li>
+    <li><strong>No media servers on the console</strong>: the launchpad isn't on the same network segment as the server, or multicast is blocked. In Docker use <code>--network host</code>; in a jail or VM use bridged networking. Or add the server's description URL by hand.</li>
+    <li><strong>Forgot the console password</strong>: run <code>minstrel-launchpad console</code> on the launchpad for a new setup link (add <code>-data</code> with its data directory if you set one, such as <code>-data /var/db/launchpad</code> in a FreeBSD jail, as the user it runs as).</li>
+  </ul>
+  <p>More detail, all options and the API are in the <a href="https://github.com/imush/minstrel-launchpad#readme">README</a>. Questions: <a href="https://github.com/imush/minstrel-launchpad/issues">GitHub issues</a>.</p>
+</main>
+
+<footer class="dark">
+  <div class="wrap">
+    <span class="footer-brand"><svg viewBox="0 0 120 120" aria-hidden="true"><use href="#mark"/></svg>© 2026 Minstrel Player · BSD 3-Clause</span>
+    <span><a href="/">Home</a> · <a href="privacy">Privacy</a> · <a href="https://github.com/imush/minstrel-launchpad/issues">Contact</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

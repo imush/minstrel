@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Minstrel Player — your music library, at home and on the road</title>
+<meta name="description" content="Minstrel plays the music on your own UPnP/DLNA media server on your phone, on network players at home, and in the car through Android Auto and CarPlay. Open source.">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta property="og:image" content="https://minstrelplayer.org/social.png">
+<meta property="og:site_name" content="Minstrel Player">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="mark" viewBox="0 0 120 120"><path d="M60 100 C 32 100, 22 80, 28 58 C 32 42, 27 30, 18 20" fill="none" stroke="#E8A84A" stroke-width="8" stroke-linecap="round"/><path d="M60 100 C 88 100, 98 80, 92 58 C 88 42, 93 30, 102 20" fill="none" stroke="#E8A84A" stroke-width="8" stroke-linecap="round"/><circle cx="18" cy="20" r="6.5" fill="#E8A84A"/><circle cx="102" cy="20" r="6.5" fill="#E8A84A"/><path d="M45 86 V77 M55 86 V67 M65 86 V57 M75 86 V47" fill="none" stroke="#F3EBDD" stroke-width="7" stroke-linecap="round"/></symbol></svg>
+
+<div class="dark">
+  <div class="wrap">
+    <nav aria-label="Main">
+      <a class="brand" href="/">
+        <svg viewBox="0 0 120 120" aria-hidden="true"><use href="#mark"/></svg>
+        minstrel
+      </a>
+      <ul>
+        <li><a href="app">The app</a></li>
+        <li><a href="launchpad">Launchpad</a></li>
+        <li class="optional"><a href="https://github.com/imush/minstrel">GitHub</a></li>
+      </ul>
+    </nav>
+
+    <div class="hero">
+      <div>
+        <div class="status">In development · Android &amp; iOS</div>
+        <h1>Your music library, <em>at home and on the road.</em></h1>
+        <p class="lead">Minstrel plays the music on your own media server: on your phone, on the network players around the house, and in the car. No cloud service, no account, no subscription.</p>
+        <div class="buttons">
+          <a class="button primary" href="https://github.com/imush/minstrel">Follow on GitHub</a>
+          <a class="button ghost" href="app">Get started</a>
+        </div>
+      </div>
+      <svg class="mark" viewBox="0 0 120 120" role="img" aria-label="The Minstrel mark: a lyre whose strings are signal bars"><rect width="120" height="120" rx="27" fill="#221F45"/><g transform="translate(60 61) scale(0.68) translate(-60 -59)"><path d="M60 100 C 32 100, 22 80, 28 58 C 32 42, 27 30, 18 20" fill="none" stroke="#E8A84A" stroke-width="9" stroke-linecap="round"/><path d="M60 100 C 88 100, 98 80, 92 58 C 88 42, 93 30, 102 20" fill="none" stroke="#E8A84A" stroke-width="9" stroke-linecap="round"/><circle cx="18" cy="20" r="7" fill="#E8A84A"/><circle cx="102" cy="20" r="7" fill="#E8A84A"/><path d="M45 86 V77 M55 86 V67 M65 86 V57 M75 86 V47" fill="none" stroke="#F3EBDD" stroke-width="8" stroke-linecap="round"/></g></svg>
+    </div>
+  </div>
+</div>
+
+<main>
+  <section id="features">
+    <div class="wrap">
+      <p class="eyebrow">What it does</p>
+      <h2>One app for the library you already have</h2>
+      <p class="intro">If your music lives on a NAS or a computer and is served over UPnP/DLNA (MinimServer, MiniDLNA, Jellyfin, Plex and the like), Minstrel finds it and plays it.</p>
+      <div class="features">
+        <div class="feature">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M6 8h20M6 16h20M6 24h12"/><circle cx="24" cy="24" r="3"/></svg>
+          <h3>Browse and play</h3>
+          <p>Your server's own folders, albums and artists, with artwork and a queue that survives restarts. Lossless files play as they are; transcoding for mobile data is coming later.</p>
+        </div>
+        <div class="feature">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="5" y="9" width="22" height="14" rx="3"/><path d="M10 27h12M16 23v4M11 16h2M16 16h5"/></svg>
+          <h3>Play on your hi-fi</h3>
+          <p>Send the queue to network players and streamers at home, and take it back to the phone when you leave.</p>
+        </div>
+        <div class="feature">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 20l3-8h16l3 8v5H5z"/><circle cx="10" cy="21" r="1.5"/><circle cx="22" cy="21" r="1.5"/><path d="M8 25v2M24 25v2"/></svg>
+          <h3>In the car <small class="soon">Coming later</small></h3>
+          <p>Android Auto and CarPlay: a short, driving-safe menu of your library, recent albums, search and voice. Audio only.</p>
+        </div>
+        <div class="feature">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M6 15l10-8 10 8v11H6z"/><path d="M13 26v-7h6v7"/></svg>
+          <h3>Away from home</h3>
+          <p>A small home service, minstrel-launchpad, lets your phone reach the library over mobile data, through your own router.</p>
+        </div>
+        <div class="feature">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="7" y="14" width="18" height="13" rx="2"/><path d="M11 14v-4a5 5 0 0 1 10 0v4"/></svg>
+          <h3>Private by design</h3>
+          <p>No account and no tracking. The app talks only to your own servers, over connections pinned to your launchpad's key.</p>
+        </div>
+        <div class="feature">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M12 10l-6 6 6 6M20 10l6 6-6 6"/></svg>
+          <h3>Open source</h3>
+          <p>The app and the launchpad are BSD-licensed and on GitHub.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="away">
+    <div class="wrap">
+      <p class="eyebrow">Away from home</p>
+      <h2>Your library over mobile data, with no cloud in between</h2>
+      <p class="intro">minstrel-launchpad runs at home, next to your media server: on a NAS, a router, a Raspberry Pi or a computer. It is the only door to your music, and only your paired devices have the key.</p>
+      <ol class="steps">
+        <li>
+          <h3>Run the launchpad</h3>
+          <p>One small program (or a Docker container) on Linux, FreeBSD, macOS or Windows. It finds your media servers by itself.</p>
+        </li>
+        <li>
+          <h3>Open one port</h3>
+          <p>Forward a port on your router to the launchpad, and enter your address or dynamic-DNS name on its web console.</p>
+        </li>
+        <li>
+          <h3>Pair your phone</h3>
+          <p>Scan the code the console shows, or open a pairing file sent to a family member. Each device can be removed at any time.</p>
+        </li>
+      </ol>
+      <p class="note">At home the app talks to your servers directly; out of the house it switches to the launchpad on its own, and back again when you return. <a href="launchpad">Set up the launchpad →</a></p>
+    </div>
+  </section>
+
+  <section id="source">
+    <div class="wrap">
+      <p class="eyebrow">Open source</p>
+      <h2>Built in the open</h2>
+      <p class="intro">Minstrel is in development, with Android and iPhone first. Follow along, try it out, or report a problem on GitHub.</p>
+      <div class="open">
+        <a class="repo" href="https://github.com/imush/minstrel">
+          <span class="name">imush/minstrel</span>
+          <p>The app, for Android and iOS, written in Flutter.</p>
+        </a>
+        <a class="repo" href="https://github.com/imush/minstrel-launchpad">
+          <span class="name">imush/minstrel-launchpad</span>
+          <p>The home service, written in Go: a single binary or a Docker image.</p>
+        </a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="dark">
+  <div class="wrap">
+    <span class="footer-brand"><svg viewBox="0 0 120 120" aria-hidden="true"><use href="#mark"/></svg>© 2026 Minstrel Player · BSD 3-Clause</span>
+    <span><a href="privacy">Privacy</a> · <a href="https://github.com/imush/minstrel/issues">Contact</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

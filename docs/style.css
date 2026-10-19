@@ -1,0 +1,102 @@
+:root {
+  --midnight: #14122B;
+  --indigo: #221F45;
+  --brass: #E8A84A;
+  --brass-dark: #B8731A;
+  --parchment: #F3EBDD;
+  --paper: #F6F1E7;
+  --mist: #B9B3CF;
+  --ink-soft: #4A4560;
+  --display: 'Bricolage Grotesque', 'Helvetica Neue', Helvetica, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--midnight);
+  font: 17px/1.6 var(--display);
+}
+a { color: var(--brass-dark); text-underline-offset: 3px; }
+a:hover { color: var(--midnight); }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+/* Header and hero, on midnight */
+.dark { background: var(--midnight); color: var(--parchment); }
+.dark a { color: var(--brass); }
+.dark a:hover { color: var(--parchment); }
+nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 22px 0; }
+.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--parchment) !important; font-weight: 700; font-size: 22px; letter-spacing: -0.02em; }
+.brand svg { width: 36px; height: 36px; }
+nav ul { display: flex; gap: 24px; margin: 0; padding: 0; list-style: none; font-family: var(--mono); font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; }
+nav ul a { text-decoration: none; }
+
+.hero { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 48px; align-items: center; padding: 56px 0 96px; }
+.hero h1 { margin: 0 0 20px; font-size: clamp(40px, 7vw, 76px); line-height: 1.02; letter-spacing: -0.04em; font-weight: 800; }
+.hero h1 em { font-style: normal; color: var(--brass); }
+.hero p.lead { margin: 0 0 28px; font-size: 20px; color: var(--mist); max-width: 34em; }
+.hero .mark { justify-self: center; width: min(320px, 70vw); }
+.status { display: inline-flex; align-items: center; gap: 10px; margin-bottom: 24px; font-family: var(--mono); font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--mist); }
+.status::before { content: ""; width: 8px; height: 8px; border-radius: 4px; background: var(--brass); }
+.buttons { display: flex; flex-wrap: wrap; gap: 12px; }
+.button { display: inline-block; padding: 12px 20px; border-radius: 10px; font-weight: 600; text-decoration: none; border: 2px solid var(--brass); }
+.button.primary { background: var(--brass); color: var(--midnight) !important; }
+.button.primary:hover { background: var(--parchment); border-color: var(--parchment); }
+.button.ghost { color: var(--brass) !important; }
+.button.ghost:hover { color: var(--parchment) !important; border-color: var(--parchment); }
+
+/* Sections on paper */
+section { padding: 88px 0; }
+section + section { border-top: 1px solid #E4DCCB; }
+.eyebrow { margin: 0 0 12px; font-family: var(--mono); font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--brass-dark); }
+h2 { margin: 0 0 16px; font-size: clamp(30px, 4.5vw, 44px); line-height: 1.1; letter-spacing: -0.03em; }
+h3 { margin: 0 0 8px; font-size: 21px; letter-spacing: -0.01em; }
+.intro { max-width: 40em; margin: 0 0 48px; color: var(--ink-soft); font-size: 19px; }
+
+.features { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px 36px; }
+.feature p { margin: 0; color: var(--ink-soft); }
+.feature svg { width: 32px; height: 32px; margin-bottom: 14px; stroke: var(--brass-dark); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+.steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin: 0; padding: 0; list-style: none; counter-reset: step; }
+.steps li { counter-increment: step; padding: 28px; background: #fff; border-radius: 14px; border: 1px solid #E4DCCB; }
+.steps li::before { content: "0" counter(step); display: block; margin-bottom: 12px; font-family: var(--mono); font-size: 14px; color: var(--brass-dark); }
+.steps p { margin: 0; color: var(--ink-soft); }
+.note { margin-top: 32px; color: var(--ink-soft); }
+
+.open { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.repo { display: block; padding: 28px; border-radius: 14px; background: var(--midnight); color: var(--parchment) !important; text-decoration: none; }
+.repo:hover { background: var(--indigo); }
+.repo .name { font-family: var(--mono); font-size: 15px; color: var(--brass); }
+.repo p { margin: 8px 0 0; color: var(--mist); }
+
+footer { padding: 40px 0; font-family: var(--mono); font-size: 13px; color: var(--mist); }
+footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; }
+
+h3 .soon { margin-left: 8px; padding: 2px 8px; border-radius: 6px; background: #EFE3CC; color: var(--brass-dark); font: 500 11px/1.6 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; vertical-align: 3px; }
+
+/* Long-form pages */
+.page { max-width: 720px; padding: 64px 24px 96px; margin: 0 auto; }
+.page h1 { font-size: clamp(34px, 5vw, 48px); letter-spacing: -0.03em; line-height: 1.1; margin: 0 0 8px; }
+.page h2 { font-size: 24px; margin: 40px 0 8px; }
+.page .meta { font-family: var(--mono); font-size: 13px; color: var(--ink-soft); margin: 0 0 32px; }
+.page li { margin-bottom: 6px; }
+
+@media (max-width: 820px) {
+  .hero { grid-template-columns: 1fr; padding: 24px 0 72px; gap: 32px; }
+  .hero .mark { grid-row: 1; width: 160px; justify-self: start; }
+  .features, .steps, .open { grid-template-columns: 1fr; }
+  nav ul { gap: 16px; }
+  section { padding: 64px 0; }
+}
+@media (max-width: 480px) {
+  nav ul li.optional { display: none; }
+}
+.footer-brand { display: inline-flex; align-items: center; gap: 10px; }
+.footer-brand svg { width: 22px; height: 22px; }
+.page-icon { display: block; width: 72px; height: 72px; margin: 0 0 20px; }
+.page pre { margin: 12px 0 20px; padding: 16px 18px; overflow-x: auto; border-radius: 10px; background: var(--midnight); color: var(--parchment); font: 13.5px/1.6 var(--mono); }
+.page code { font-family: var(--mono); font-size: 0.88em; }
+.page :not(pre) > code { padding: 1px 5px; border-radius: 4px; background: #EBE2D0; }
+.page h3 { margin: 28px 0 6px; }
