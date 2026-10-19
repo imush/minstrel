@@ -34,6 +34,7 @@ class AppServices {
   static const _manualKey = 'manualDevices';
   static const _qualityKey = 'quality';
   static const _keepAliveKey = 'iosKeepAlive';
+  static const _compressionKey = 'awayCompression';
   static const _multicast = MethodChannel('org.minstrelplayer/multicast');
 
   static Future<void> init() async {
@@ -67,6 +68,7 @@ class AppServices {
     final car = CarLibrary(RegistrySource(registry), PhonePlayer(player), PrefsHistory(prefs));
     player.attachCar(car);
     instance = AppServices._(client, registry, player, prefs, await Homes.start(registry), car);
+    instance.homes.proxy.compression = prefs.getString(_compressionKey);
     if (Platform.isIOS) unawaited(CarPlayBridge(car).start());
     // Coming back to the app may mean a new network: home Wi-Fi, cellular.
     AppLifecycleListener(onResume: () {
@@ -79,6 +81,7 @@ class AppServices {
     // The queue first: a car may be asking for it while discovery waits
     // on servers that are out of reach.
     await instance._restoreQueue();
+    instance._watchOutput();
     await instance._startDiscovery();
   }
 
@@ -112,6 +115,25 @@ class AppServices {
           for (final e in snap.entries) QueueEntry(e.item, e.resource.withUri(homes.proxy.rehome(e.resource.uri))),
         ],
       );
+
+  /// Leaves a renderer that discovery has dropped (the phone left home, or
+  /// the player was switched off), after a few seconds' grace in case it is
+  /// only being found again on a new network.
+  void _watchOutput() {
+    Timer? grace;
+    registry.changes.listen((_) {
+      final out = player.output;
+      if (out.isLocal || registry.renderer(out.id) != null) {
+        grace?.cancel();
+        grace = null;
+        return;
+      }
+      grace ??= Timer(const Duration(seconds: 4), () {
+        grace = null;
+        if (player.output.id == out.id && registry.renderer(out.id) == null) unawaited(player.dropOutput());
+      });
+    });
+  }
 
   Future<void> _reconnect(String udn, {Duration within = const Duration(minutes: 1)}) async {
     var renderer = registry.renderer(udn);
@@ -153,6 +175,19 @@ class AppServices {
   Future<void> setQualityPreference(QualityPreference q) async {
     player.preference = q;
     await prefs.setString(_qualityKey, q.name);
+  }
+
+  /// The compression to ask launchpads for when playing from home away
+  /// from it (`aac-192` and so on), or null for the original files.
+  String? get compression => homes.proxy.compression;
+
+  Future<void> setCompression(String? profile) async {
+    homes.proxy.compression = profile;
+    if (profile == null) {
+      await prefs.remove(_compressionKey);
+    } else {
+      await prefs.setString(_compressionKey, profile);
+    }
   }
 
   Future<void> setKeepAlive(bool on) async {

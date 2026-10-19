@@ -6,14 +6,22 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 
 /// What a minstrel-launchpad's pairing QR code carries:
-/// `minstrel://pair?v=1&n=<name>&fp=<key hash>&c=<code>&a=<host:port>...`.
+/// `minstrel://pair?v=1&n=<name>&fp=<key hash>&c=<code>&a=<host:port>...&r=<host:port>...`,
+/// where `r` are addresses through a satellite.
 class PairingInvitation {
   final String name;
   final String fingerprint;
   final String code;
   final List<String> addresses;
+  final List<String> relays;
 
-  const PairingInvitation({required this.name, required this.fingerprint, required this.code, required this.addresses});
+  const PairingInvitation({
+    required this.name,
+    required this.fingerprint,
+    required this.code,
+    required this.addresses,
+    this.relays = const [],
+  });
 
   /// Parses a pairing link, or returns null if [text] isn't one.
   static PairingInvitation? parse(String text) {
@@ -22,8 +30,10 @@ class PairingInvitation {
     final q = uri.queryParametersAll;
     String? one(String k) => q[k]?.firstOrNull?.trim();
     final fp = one('fp'), code = one('c');
-    final addresses = [...?q['a']].map((a) => a.trim()).where((a) => a.isNotEmpty).toList();
-    if (one('v') != '1' || fp == null || fp.isEmpty || code == null || code.isEmpty || addresses.isEmpty) {
+    List<String> all(String k) => [...?q[k]].map((a) => a.trim()).where((a) => a.isNotEmpty).toList();
+    final addresses = all('a'), relays = all('r');
+    if (one('v') != '1' || fp == null || fp.isEmpty || code == null || code.isEmpty ||
+        addresses.isEmpty && relays.isEmpty) {
       return null;
     }
     return PairingInvitation(
@@ -31,6 +41,7 @@ class PairingInvitation {
       fingerprint: fp,
       code: code,
       addresses: addresses,
+      relays: relays,
     );
   }
 }
@@ -41,6 +52,10 @@ class Home {
   final String fingerprint;
   final String token;
   final List<String> addresses;
+
+  /// Addresses through a satellite: tried only when the direct ones don't
+  /// answer, since relayed traffic costs the satellite's owner.
+  final List<String> relays;
   final String deviceId;
 
   /// Named on this device; the launchpad's own name no longer replaces it.
@@ -52,14 +67,16 @@ class Home {
     required this.token,
     required this.addresses,
     required this.deviceId,
+    this.relays = const [],
     this.renamed = false,
   });
 
-  Home copyWith({String? name, List<String>? addresses, bool? renamed}) => Home(
+  Home copyWith({String? name, List<String>? addresses, List<String>? relays, bool? renamed}) => Home(
         name: name ?? this.name,
         fingerprint: fingerprint,
         token: token,
         addresses: addresses ?? this.addresses,
+        relays: relays ?? this.relays,
         deviceId: deviceId,
         renamed: renamed ?? this.renamed,
       );
@@ -74,6 +91,7 @@ class Home {
     'fingerprint': fingerprint,
     'token': token,
     'addresses': addresses,
+    if (relays.isNotEmpty) 'relays': relays,
     'deviceId': deviceId,
     if (renamed) 'renamed': true,
   };
@@ -83,6 +101,7 @@ class Home {
     fingerprint: j['fingerprint'] as String,
     token: j['token'] as String,
     addresses: (j['addresses'] as List).cast<String>(),
+    relays: [...?(j['relays'] as List?)?.cast<String>()],
     deviceId: j['deviceId'] as String? ?? '',
     renamed: j['renamed'] as bool? ?? false,
   );
@@ -144,7 +163,15 @@ class LaunchpadInfo {
   /// from launchpads too old to say.
   final List<String> addresses;
 
-  const LaunchpadInfo(this.name, this.version, this.servers, [this.addresses = const []]);
+  /// Addresses through a satellite; null from launchpads too old to say.
+  final List<String>? relays;
+
+  /// Compression profiles the launchpad offers (see [HomeProxy.compression]);
+  /// empty without ffmpeg there.
+  final List<String> transcode;
+
+  const LaunchpadInfo(this.name, this.version, this.servers,
+      [this.addresses = const [], this.relays, this.transcode = const []]);
 
   static LaunchpadInfo fromJson(Map<String, dynamic> j) => LaunchpadInfo(
     j['name'] as String? ?? '',
@@ -159,6 +186,8 @@ class LaunchpadInfo {
         ),
     ],
     [...?(j['addresses'] as List?)?.cast<String>()],
+    (j['relays'] as List?)?.cast<String>().toList(),
+    [...?(j['transcode'] as List?)?.cast<String>()],
   );
 }
 
@@ -220,19 +249,30 @@ bool isConnectionError(Object e) =>
 /// Finds an address that answers as the launchpad: concurrently, first wins
 /// (at home that's normally the LAN address). Without a [token] any pinned
 /// answer counts; with one it must be accepted.
+///
+/// [relays], addresses through a satellite, give the direct ones a head
+/// start of [relayDelay], or less if those all fail sooner: the satellite is
+/// for when home can't be reached directly.
 Future<String> findLaunchpad(
   HttpClient client,
-  List<String> addresses, {
+  List<String> direct, {
+  List<String> relays = const [],
+  Duration relayDelay = const Duration(milliseconds: 1500),
   String? token,
   bool Function()? mismatched,
 }) async {
+  final addresses = [...direct, ...relays];
   if (addresses.isEmpty) throw const LaunchpadException(LaunchpadProblem.unreachable);
+  final directDone = Completer<void>();
+  var directPending = direct.length;
+  if (directPending == 0) directDone.complete();
   final done = Completer<String>();
   final outcomes = List<String?>.filled(addresses.length, null);
   var pending = addresses.length;
   LaunchpadException? worst;
   void failed(int i, LaunchpadException e, String outcome) {
-    outcomes[i] = outcome;
+    outcomes[i] = i < direct.length ? outcome : '$outcome (satellite)';
+    if (i < direct.length && --directPending == 0) directDone.complete();
     // A definite answer from the launchpad outranks "couldn't connect".
     if (worst == null || worst!.problem == LaunchpadProblem.unreachable) worst = e;
     if (--pending == 0 && !done.isCompleted) {
@@ -248,6 +288,10 @@ Future<String> findLaunchpad(
     final addr = addresses[i];
     () async {
       try {
+        if (i >= direct.length) {
+          await Future.any([directDone.future, Future<void>.delayed(relayDelay)]);
+          if (done.isCompleted) return;
+        }
         final rq = await client.getUrl(Uri.parse('https://$addr/api/info'));
         if (token != null) rq.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
         final resp = await rq.close().timeout(const Duration(seconds: 10));
@@ -281,7 +325,8 @@ Future<Home> pairWithLaunchpad(PairingInvitation invitation, {required String de
   var mismatch = false;
   final client = pinnedHttpClient(invitation.fingerprint, onMismatch: () => mismatch = true);
   try {
-    final addr = await findLaunchpad(client, invitation.addresses, mismatched: () => mismatch);
+    final addr = await findLaunchpad(client, invitation.addresses,
+        relays: invitation.relays, mismatched: () => mismatch);
     final rq = await client.postUrl(Uri.parse('https://$addr/api/pair'));
     rq.headers.contentType = ContentType.json;
     rq.write(jsonEncode({'code': invitation.code, 'name': deviceName}));
@@ -296,6 +341,7 @@ Future<Home> pairWithLaunchpad(PairingInvitation invitation, {required String de
           fingerprint: invitation.fingerprint,
           token: j['token'] as String,
           addresses: invitation.addresses,
+          relays: invitation.relays,
           deviceId: (j['device'] as Map<String, dynamic>)['id'] as String,
         );
       case 403:

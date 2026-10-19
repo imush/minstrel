@@ -37,6 +37,11 @@ class DeviceRegistry {
   final _pending = <Uri>{};
   final _manual = <Uri>{};
   final _changes = StreamController<void>.broadcast();
+  Timer? _watch;
+  bool _checking = false;
+
+  /// How often to look for a change of network.
+  static const watchEvery = Duration(seconds: 5);
 
   DeviceRegistry(this._http) : _soap = SoapClient(_http);
 
@@ -90,7 +95,33 @@ class DeviceRegistry {
   Future<void> start() async {
     await _ssdp.start();
     _sub = _ssdp.messages.listen(_onSsdp);
+    _watch = Timer.periodic(watchEvery, (_) => _checkNetwork());
     await refresh();
+  }
+
+  /// On joining or leaving a network, forgets the LAN devices at once (a
+  /// player at home can't be used from mobile data) and searches again;
+  /// those still there answer within a second or two.
+  Future<void> _checkNetwork() async {
+    if (_checking) return;
+    _checking = true;
+    try {
+      if (!await _ssdp.networkChanged()) return;
+      forgetLan();
+      await refresh();
+    } on Object {
+      // Tried again on the next tick.
+    } finally {
+      _checking = false;
+    }
+  }
+
+  /// Drops every device found on the LAN; those added by URL stay.
+  void forgetLan() {
+    final before = _servers.length + _renderers.length;
+    _servers.removeWhere((_, s) => !_manual.contains(s.device.location));
+    _renderers.removeWhere((_, r) => !_manual.contains(r.device.location));
+    if (_servers.length + _renderers.length != before) _changes.add(null);
   }
 
   /// Searches the LAN again, re-reads manually added devices, and drops
@@ -198,6 +229,7 @@ class DeviceRegistry {
   }
 
   Future<void> dispose() async {
+    _watch?.cancel();
     await _sub?.cancel();
     await _ssdp.dispose();
     await _changes.close();

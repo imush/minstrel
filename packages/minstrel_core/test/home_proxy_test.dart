@@ -58,6 +58,7 @@ class FakeLaunchpad {
         'name': 'Test home',
         'version': 'test',
         'addresses': ['home.example.net:443', address],
+        'transcode': ['aac-128', 'aac-192'],
         'servers': [
           {'udn': 'uuid:s1', 'name': 'Music', 'description': '$base/u/192.168.1.9:9791/desc.xml'},
         ],
@@ -106,6 +107,20 @@ void main() {
     expect(inv.addresses, ['home.example.net:443', '192.168.1.12:7443']);
     expect(PairingInvitation.parse('https://example.com'), isNull);
     expect(PairingInvitation.parse('minstrel://pair?v=1&fp=abc&c=xyz'), isNull, reason: 'no addresses');
+
+    final relayed = PairingInvitation.parse(
+        'minstrel://pair?v=1&fp=abc&c=xyz&a=192.168.1.12%3A7443&r=k3x9abcd.sat.example.org%3A443')!;
+    expect(relayed.addresses, ['192.168.1.12:7443']);
+    expect(relayed.relays, ['k3x9abcd.sat.example.org:443']);
+    expect(PairingInvitation.parse('minstrel://pair?v=1&fp=abc&c=xyz&r=k.sat.example.org%3A443')?.relays,
+        ['k.sat.example.org:443'], reason: 'a satellite alone will do');
+  });
+
+  test('keeps relay addresses with a home', () {
+    const home = Home(
+        name: 'H', fingerprint: 'f', token: 't', addresses: ['a:1'], relays: ['r.sat.example.org:443'], deviceId: 'd');
+    expect(Home.fromJson(jsonDecode(jsonEncode(home.toJson())) as Map<String, dynamic>).relays, home.relays);
+    expect(Home.fromJson({'name': 'H', 'fingerprint': 'f', 'token': 't', 'addresses': ['a:1']}).relays, isEmpty);
   });
 
   group('with a launchpad', () {
@@ -205,6 +220,55 @@ void main() {
       expect(proxy.status(home.id).tried, [startsWith('127.0.0.1:1 — ')],
           reason: 'says which address failed and how');
       client.close();
+    });
+
+    test('prefers a direct address to the satellite', () async {
+      lp.token = 'tok';
+      final client = pinnedHttpClient(fixtureFingerprint);
+      // The same launchpad answers at both; the direct one must win.
+      final relay = 'localhost:${lp.server.port}';
+      expect(await findLaunchpad(client, [lp.address], relays: [relay], token: 'tok'), lp.address);
+      await Future<void>.delayed(const Duration(milliseconds: 1700));
+      expect(lp.requests.where((r) => r.headers.host == 'localhost'), isEmpty, reason: 'satellite left alone');
+      client.close(force: true);
+    });
+
+    test('uses the satellite as soon as the direct addresses fail', () async {
+      lp.token = 'tok';
+      final client = pinnedHttpClient(fixtureFingerprint);
+      final watch = Stopwatch()..start();
+      expect(await findLaunchpad(client, ['127.0.0.1:1'], relays: [lp.address], token: 'tok'), lp.address);
+      expect(watch.elapsed, lessThan(const Duration(milliseconds: 1000)), reason: 'no need to wait out the head start');
+      client.close(force: true);
+    });
+
+    test('says when it is connected through the satellite', () async {
+      final paired = await pairWithLaunchpad(invitation(), deviceName: 'p');
+      proxy.add(paired.copyWith(addresses: ['127.0.0.1:1'], relays: [lp.address]));
+      await proxy.info(paired.id);
+      expect(proxy.status(paired.id).state, HomeState.connected);
+      expect(proxy.status(paired.id).viaSatellite, isTrue);
+    });
+
+    test('asks the launchpad to compress when set to', () async {
+      final home = await pairWithLaunchpad(invitation(), deviceName: 'p');
+      proxy.add(home);
+      Future<String?> sent() async {
+        final client = HttpClient();
+        final resp = await (await client.getUrl(Uri.parse('${proxy.base(home.id)}/u/192.168.1.9:9790/a.flac'))).close();
+        await resp.drain<void>();
+        client.close();
+        return lp.requests.last.headers.value('x-minstrel-transcode');
+      }
+
+      expect(await sent(), isNull, reason: 'original by default');
+      proxy.compression = 'aac-192';
+      expect(await sent(), isNull, reason: 'not before the launchpad has said it can');
+      await proxy.info(home.id);
+      expect(proxy.canCompress(home.id), isTrue);
+      expect(await sent(), 'aac-192');
+      proxy.compression = 'aac-320';
+      expect(await sent(), isNull, reason: 'a profile the launchpad lacks');
     });
 
     test('lists what happened at each address', () async {

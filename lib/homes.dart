@@ -51,11 +51,16 @@ class Homes extends ChangeNotifier {
   Future<void> refresh(Home home) async {
     try {
       final info = await proxy.info(home.id);
-      // Follow changes made on the launchpad's console: its addresses, and
+      // Follow changes made on the launchpad's console: its addresses (direct
+      // and through a satellite), and
       // its name unless this device named the home itself.
       var updated = home;
       if (info.addresses.isNotEmpty && !listEquals(info.addresses, home.addresses)) {
         updated = updated.copyWith(addresses: info.addresses);
+      }
+      final relays = info.relays;
+      if (relays != null && !listEquals(relays, home.relays)) {
+        updated = updated.copyWith(relays: relays);
       }
       if (!home.renamed && info.name.isNotEmpty && info.name != home.name) {
         updated = updated.copyWith(name: info.name);

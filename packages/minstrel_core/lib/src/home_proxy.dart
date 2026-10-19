@@ -17,7 +17,10 @@ class HomeStatus {
   /// When unreachable: each address tried and what happened there.
   final List<String> tried;
 
-  const HomeStatus(this.state, {this.address, this.problem, this.tried = const []});
+  /// Connected through a satellite rather than directly.
+  final bool viaSatellite;
+
+  const HomeStatus(this.state, {this.address, this.problem, this.tried = const [], this.viaSatellite = false});
 
   /// Connected over the home network rather than from outside.
   bool get atHome {
@@ -52,6 +55,11 @@ class HomeProxy {
 
   HttpServer? _server;
   final _links = <String, _Link>{};
+
+  /// The compression profile to ask launchpads for (`aac-192` and so on),
+  /// or null for the original files. Only for this device's own playback
+  /// away from home: at home the phone reaches the servers directly.
+  String? compression;
   final _changes = StreamController<String>.broadcast();
 
   /// Ids of homes whose status changed.
@@ -118,8 +126,13 @@ class HomeProxy {
     final resp = await link.send('GET', '/api/info', const {}, null, base(id));
     final body = await utf8.decodeStream(resp);
     if (resp.statusCode != 200) throw LaunchpadException(_problemFor(resp) ?? LaunchpadProblem.unreachable);
-    return LaunchpadInfo.fromJson(jsonDecode(body) as Map<String, dynamic>);
+    final info = LaunchpadInfo.fromJson(jsonDecode(body) as Map<String, dynamic>);
+    link.transcode = info.transcode;
+    return info;
   }
+
+  /// Whether home [id]'s launchpad can compress, as of its last answer.
+  bool canCompress(String id) => _links[id]?.transcode.isNotEmpty ?? false;
 
   Future<void> close() async {
     for (final l in _links.values) {
@@ -159,6 +172,14 @@ class HomeProxy {
       });
 
       final base = this.base(seg[1]);
+      final profile = compression;
+      if (profile != null &&
+          req.method == 'GET' &&
+          path.startsWith('/u/') &&
+          !link.status.atHome &&
+          link.transcode.contains(profile)) {
+        headers['x-minstrel-transcode'] = [profile];
+      }
       final up = await link.send(req.method, path, headers, body, base);
       res.statusCode = up.statusCode;
       up.headers.forEach((k, v) {
@@ -285,6 +306,9 @@ class _Link {
   late final HttpClient _client = pinnedHttpClient(home.fingerprint, onMismatch: () => _mismatch = true);
   String? _address;
   DateTime? _probedAt;
+
+  /// Compression profiles the launchpad offers.
+  List<String> transcode = const [];
   Future<String>? _probing;
   HomeStatus status = const HomeStatus(HomeState.connecting);
 
@@ -294,6 +318,7 @@ class _Link {
     if (s.state == status.state &&
         s.address == status.address &&
         s.problem == status.problem &&
+        s.viaSatellite == status.viaSatellite &&
         s.tried.join('\n') == status.tried.join('\n')) {
       return;
     }
@@ -319,10 +344,11 @@ class _Link {
   Future<String> _probe() => _probing ??= () async {
         _mismatch = false;
         try {
-          final addr = await findLaunchpad(_client, home.addresses, token: home.token, mismatched: () => _mismatch);
+          final addr = await findLaunchpad(_client, home.addresses,
+              relays: home.relays, token: home.token, mismatched: () => _mismatch);
           _address = addr;
           _probedAt = DateTime.now();
-          _set(HomeStatus(HomeState.connected, address: addr));
+          _set(HomeStatus(HomeState.connected, address: addr, viaSatellite: home.relays.contains(addr)));
           return addr;
         } on LaunchpadException catch (e) {
           if (_address == null) {

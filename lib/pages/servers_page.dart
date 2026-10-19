@@ -263,7 +263,14 @@ class _HomeTile extends StatelessWidget {
     final error = Theme.of(context).colorScheme.error;
     final (text, color) = switch (status.state) {
       HomeState.connecting => ('Connecting…', null),
-      HomeState.connected => (status.atHome ? 'Connected on this network' : 'Connected from outside', null),
+      HomeState.connected => (
+          status.atHome
+              ? 'Connected on this network'
+              : status.viaSatellite
+                  ? 'Connected through the satellite'
+                  : 'Connected from outside',
+          null,
+        ),
       HomeState.unreachable || HomeState.notPaired =>
         (status.problem?.message ?? LaunchpadProblem.unreachable.message, error),
     };

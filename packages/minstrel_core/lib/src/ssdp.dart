@@ -104,6 +104,10 @@ class SsdpClient {
     }
   }
 
+  /// Whether the device's addresses changed since the sockets were opened:
+  /// it joined or left a network.
+  Future<bool> networkChanged() async => !_sameAddresses(_addressesOf(await _interfaces()), _bound);
+
   /// Sends M-SEARCH for media servers and renderers on every interface.
   /// Each request is sent twice because UDP may drop either.
   Future<void> search({int mx = 2}) async {

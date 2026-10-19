@@ -155,6 +155,30 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
     _publish(_output.state);
   }
 
+  /// Goes back to this device when the renderer in use has gone, e.g. the
+  /// phone left the home network. The queue stays where the renderer last
+  /// was, paused: nothing starts playing on the phone by itself.
+  Future<void> dropOutput() async {
+    if (_output.isLocal) return;
+    final prev = _output;
+    final index = _currentIndex;
+    final position = _loaded ? prev.state.position : _pendingPosition;
+    final items = [for (final e in _entries) e.item];
+    await _sub?.cancel();
+    // It can't be reached; don't wait on it to say goodbye.
+    unawaited(prev.dispose().timeout(const Duration(seconds: 3), onTimeout: () {}).catchError((_) {}));
+    _output = localOutput;
+    outputListenable.value = localOutput;
+    _listen();
+    final (entries, newIndex, skippedNow) =
+        _resolve(items, index < 0 ? 0 : index, await localOutput.sinks(), local: true);
+    skipped = skippedNow;
+    _setEntries(entries);
+    _pendingIndex = entries.isEmpty ? -1 : newIndex;
+    _pendingPosition = position;
+    _publish(localOutput.state);
+  }
+
   /// Makes [out] the output and follows whatever it's already playing; if
   /// it's playing nothing we know, the current queue stays pending on it.
   Future<void> adopt(Output out) async {

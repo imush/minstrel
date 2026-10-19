@@ -69,7 +69,16 @@ class _BrowsePageState extends State<BrowsePage> {
     final start = from == null ? 0 : items.indexWhere((i) => i.id == from.id);
     final services = AppServices.instance;
     final player = services.player;
-    await player.playItems(items, start < 0 ? 0 : start);
+    try {
+      await player.playItems(items, start < 0 ? 0 : start);
+    } on Object catch (e) {
+      if (!mounted || !isConnectionError(e)) rethrow;
+      // Typically a player at home, chosen before leaving the house.
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Can\'t reach ${player.output.name}. Choose another output to play here.'),
+      ));
+      return;
+    }
     // Shown in the car's Recent tab.
     unawaited(services.car.remember(widget.server.udn, widget.containerId, widget.title, items.first.albumArt));
     if (!mounted) return;
