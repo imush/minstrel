@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Minstrel mark: a lyre whose strings are signal bars. The 120-unit
+     artwork sits in the 72dp an adaptive icon always shows. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <group android:translateX="18" android:translateY="18" android:scaleX="0.6" android:scaleY="0.6">
+        <group android:translateX="19.2" android:translateY="20.88" android:scaleX="0.68" android:scaleY="0.68">
+            <path android:pathData="M60,100 C32,100 22,80 28,58 C32,42 27,30 18,20" android:strokeColor="#E8A84A" android:strokeWidth="9" android:strokeLineCap="round" />
+            <path android:pathData="M60,100 C88,100 98,80 92,58 C88,42 93,30 102,20" android:strokeColor="#E8A84A" android:strokeWidth="9" android:strokeLineCap="round" />
+            <path android:pathData="M11,20 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0 M95,20 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0" android:fillColor="#E8A84A" />
+            <path android:pathData="M45,86 V77 M55,86 V67 M65,86 V57 M75,86 V47" android:strokeColor="#F3EBDD" android:strokeWidth="8" android:strokeLineCap="round" />
+        </group>
+    </group>
+</vector>

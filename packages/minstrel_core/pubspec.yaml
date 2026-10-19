@@ -1,0 +1,19 @@
+name: minstrel_core
+description: UPnP AV control point core for minstrel (pure Dart).
+version: 0.1.0
+publish_to: none
+# repository: https://github.com/my_org/my_repo
+
+environment:
+  sdk: ^3.12.1
+
+# Add regular dependencies here.
+dependencies:
+  crypto: ^3.0.7
+  http: ^1.6.0
+  xml: ^7.0.1
+  # path: ^1.9.0
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.33.0
