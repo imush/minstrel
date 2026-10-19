@@ -58,6 +58,9 @@ class SsdpClient {
   final List<RawDatagramSocket> _sockets = [];
   RawDatagramSocket? _listener;
 
+  /// The interface addresses the sockets were opened on.
+  Set<String> _bound = const {};
+
   Stream<SsdpMessage> get messages => _controller.stream;
 
   /// Set when the OS refuses multicast with "no route to host", which on
@@ -68,8 +71,8 @@ class SsdpClient {
   /// network (Wi-Fi and Ethernet on a desktop, for example), and joins the
   /// multicast group to hear NOTIFY announcements.
   Future<void> start() async {
-    final interfaces = await NetworkInterface.list(
-        type: InternetAddressType.IPv4, includeLoopback: false);
+    final interfaces = await _interfaces();
+    _bound = _addressesOf(interfaces);
     for (final iface in interfaces) {
       for (final addr in iface.addresses) {
         try {
@@ -104,6 +107,13 @@ class SsdpClient {
   /// Sends M-SEARCH for media servers and renderers on every interface.
   /// Each request is sent twice because UDP may drop either.
   Future<void> search({int mx = 2}) async {
+    // Sockets belong to the network they were opened on: after leaving
+    // Wi-Fi and coming back (or any change of address) they no longer
+    // reach it, so open them again.
+    if (!_sameAddresses(_addressesOf(await _interfaces()), _bound)) {
+      await stop();
+      await start();
+    }
     for (var round = 0; round < 2; round++) {
       for (final s in _sockets) {
         for (final st in searchTargets) {
@@ -116,13 +126,26 @@ class SsdpClient {
           try {
             s.send(utf8.encode(msg), _group, _port);
           } on SocketException {
-            // Network changed under us; the next search will rebind.
+            // Network changed under us; the next search reopens the sockets.
           }
         }
       }
       await Future<void>.delayed(const Duration(milliseconds: 300));
     }
   }
+
+  static Future<List<NetworkInterface>> _interfaces() async {
+    try {
+      return await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false);
+    } on Object {
+      return const [];
+    }
+  }
+
+  static Set<String> _addressesOf(List<NetworkInterface> interfaces) =>
+      {for (final i in interfaces) for (final a in i.addresses) '${i.name}/${a.address}'};
+
+  static bool _sameAddresses(Set<String> a, Set<String> b) => a.length == b.length && a.containsAll(b);
 
   /// Sets IP_MULTICAST_IF so the search leaves through this interface; the
   /// OS otherwise picks one route for the whole multicast group.
@@ -160,6 +183,7 @@ class SsdpClient {
     _sockets.clear();
     _listener?.close();
     _listener = null;
+    _bound = const {};
   }
 
   Future<void> dispose() async {

@@ -86,6 +86,15 @@ class HomeProxy {
 
   void remove(String id) => _links.remove(id)?.close();
 
+  /// Finds the best address again on the next request, after the network
+  /// may have changed (arriving home, leaving it). Transfers under way keep
+  /// their connection.
+  void recheck() {
+    for (final l in _links.values) {
+      l.recheck();
+    }
+  }
+
   HomeStatus status(String id) => _links[id]?.status ?? const HomeStatus(HomeState.unreachable);
 
   /// The loopback base for a home's URLs.
@@ -290,6 +299,10 @@ class _Link {
     }
     status = s;
     _changed();
+  }
+
+  void recheck() {
+    if (_probing == null) _address = null;
   }
 
   Future<String> _connect() {

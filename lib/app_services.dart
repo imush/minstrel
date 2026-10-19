@@ -71,6 +71,9 @@ class AppServices {
     // Coming back to the app may mean a new network: home Wi-Fi, cellular.
     AppLifecycleListener(onResume: () {
       unawaited(instance.registry.refresh());
+      // The network may have changed meanwhile: on arriving home, use the
+      // home address rather than going out and back in.
+      instance.homes.proxy.recheck();
       unawaited(instance.homes.refreshAll());
     });
     // The queue first: a car may be asking for it while discovery waits
