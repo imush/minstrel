@@ -7,7 +7,7 @@
   --paper: #F6F1E7;
   --mist: #B9B3CF;
   --ink-soft: #4A4560;
-  --display: 'Bricolage Grotesque', 'Helvetica Neue', Helvetica, sans-serif;
+  --display: 'Inter', 'Helvetica Neue', Helvetica, sans-serif;
   --mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
 }
 
@@ -34,7 +34,7 @@ nav ul { display: flex; gap: 24px; margin: 0; padding: 0; list-style: none; font
 nav ul a { text-decoration: none; }
 
 .hero { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 48px; align-items: center; padding: 56px 0 96px; }
-.hero h1 { margin: 0 0 20px; font-size: clamp(40px, 7vw, 76px); line-height: 1.02; letter-spacing: -0.04em; font-weight: 800; }
+.hero h1 { margin: 0 0 20px; font-size: clamp(36px, 6vw, 62px); line-height: 1.08; letter-spacing: -0.025em; font-weight: 700; }
 .hero h1 em { font-style: normal; color: var(--brass); }
 .hero p.lead { margin: 0 0 28px; font-size: 20px; color: var(--mist); max-width: 34em; }
 .hero .mark { justify-self: center; width: min(320px, 70vw); }
@@ -51,7 +51,7 @@ nav ul a { text-decoration: none; }
 section { padding: 88px 0; }
 section + section { border-top: 1px solid #E4DCCB; }
 .eyebrow { margin: 0 0 12px; font-family: var(--mono); font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--brass-dark); }
-h2 { margin: 0 0 16px; font-size: clamp(30px, 4.5vw, 44px); line-height: 1.1; letter-spacing: -0.03em; }
+h2 { margin: 0 0 16px; font-size: clamp(30px, 4.5vw, 44px); line-height: 1.15; letter-spacing: -0.02em; }
 h3 { margin: 0 0 8px; font-size: 21px; letter-spacing: -0.01em; }
 .intro { max-width: 40em; margin: 0 0 48px; color: var(--ink-soft); font-size: 19px; }
 
@@ -78,7 +78,7 @@ h3 .soon { margin-left: 8px; padding: 2px 8px; border-radius: 6px; background: #
 
 /* Long-form pages */
 .page { max-width: 720px; padding: 64px 24px 96px; margin: 0 auto; }
-.page h1 { font-size: clamp(34px, 5vw, 48px); letter-spacing: -0.03em; line-height: 1.1; margin: 0 0 8px; }
+.page h1 { font-size: clamp(34px, 5vw, 48px); letter-spacing: -0.02em; line-height: 1.15; margin: 0 0 8px; }
 .page h2 { font-size: 24px; margin: 40px 0 8px; }
 .page .meta { font-family: var(--mono); font-size: 13px; color: var(--ink-soft); margin: 0 0 32px; }
 .page li { margin-bottom: 6px; }
