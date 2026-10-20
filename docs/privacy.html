@@ -36,7 +36,7 @@
 <main class="page">
   <img class="page-icon" src="icon.svg" alt="" width="72" height="72">
   <h1>Privacy policy</h1>
-  <p class="meta">Minstrel Player app and minstrel-launchpad · effective 18 October 2026</p>
+  <p class="meta">Minstrel Player app and minstrel-launchpad · effective 19 October 2026</p>
 
   <p>Minstrel Player does not collect, store or share personal data. It has no account, no advertising, no analytics and no tracking, and the developer runs no server that the app reports to.</p>
 
@@ -44,8 +44,15 @@
   <ul>
     <li><strong>Media servers and players on your network</strong>, which it finds with standard UPnP/DLNA discovery, and any you add by address.</li>
     <li><strong>Launchpads you pair with</strong>: the minstrel-launchpad service you or someone you know runs at home, at the addresses in its pairing code. The connection is encrypted and accepted only from that launchpad's key.</li>
+    <li><strong>A satellite, if the home uses one</strong> (see below), only when the home can't be reached directly.</li>
   </ul>
   <p>It connects to nothing else.</p>
+
+  <h2>Satellites</h2>
+  <p>If your home's launchpad is set up with a minstrel-satellite, the app may connect through it when it can't reach home directly. The connection stays encrypted between the app and your launchpad; the satellite can't read or change what passes. It sees the app's IP address, which home it's for, and how much data passes and when. A satellite is run by whoever set it up; a hosted one is covered by its operator's own privacy policy.</p>
+
+  <h2>Compression</h2>
+  <p>If you choose a quality other than the original for listening away from home, the app asks your own launchpad to convert lossless files to a smaller format before sending them. This happens on the launchpad at home; nothing is sent anywhere else, and the converted copies stay on the launchpad.</p>
 
   <h2>What stays on your device</h2>
   <ul>
