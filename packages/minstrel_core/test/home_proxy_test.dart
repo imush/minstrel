@@ -89,6 +89,27 @@ class FakeLaunchpad {
       res.add(audio.sublist(start, end + 1));
       return res.close();
     }
+    if (req.uri.path == '/u/192.168.1.9:9790/c.flac') {
+      // A conversion in progress: no length, no ranges, from the start.
+      res.headers
+        ..contentType = ContentType('audio', 'aac')
+        ..set('x-minstrel-transcoded', 'aac-192');
+      if (dropsLeft > 0) {
+        dropsLeft--;
+        // Chunked, as the launchpad sends it, and broken off mid-chunk.
+        res.headers.chunkedTransferEncoding = true;
+        final socket = await res.detachSocket();
+        socket.add(ascii.encode('${dropAfter.toRadixString(16)}\r\n'));
+        socket.add(audio.sublist(0, dropAfter));
+        socket.add(ascii.encode('\r\n10000\r\n'));
+        socket.add(audio.sublist(dropAfter, dropAfter + 1000));
+        await socket.flush();
+        socket.destroy();
+        return;
+      }
+      res.add(audio);
+      return res.close();
+    }
     res.statusCode = 404;
     await res.close();
   }
@@ -193,6 +214,19 @@ void main() {
       expect(got, lp.audio);
       final ranges = lp.requests.map((r) => r.headers.value('range')).whereType<String>().toList();
       expect(ranges, ['bytes=300000-1048575', 'bytes=600000-1048575']);
+      client.close();
+    });
+
+    test('resumes a compressed stream, passing over what was played', () async {
+      final home = await pairWithLaunchpad(invitation(), deviceName: 'p');
+      proxy.add(home);
+      lp.dropsLeft = 1;
+      final client = HttpClient();
+      final resp = await (await client.getUrl(Uri.parse('${proxy.base(home.id)}/u/192.168.1.9:9790/c.flac'))).close();
+      final got = await resp.fold<List<int>>([], (a, b) => a..addAll(b));
+      expect(resp.statusCode, 200);
+      expect(got.length, lp.audio.length);
+      expect(got, lp.audio);
       client.close();
     });
 

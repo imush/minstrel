@@ -218,19 +218,26 @@ class HomeProxy {
   }
 
   /// The body of [first], reconnecting from where it broke off when the
-  /// response supports byte ranges.
+  /// response supports byte ranges, or is a compressed stream: the
+  /// launchpad carries on converting when the phone drops out, so asking
+  /// again gets the same stream, from the cache once it is done, and the
+  /// part already played is skipped.
   Stream<List<int>> _resumable(_Link link, String path, Map<String, List<String>> headers,
       HttpClientResponse first, Uri base, String method) async* {
     final span = method == 'GET' ? _Span.of(first) : null;
-    if (span == null) {
+    final converted = method == 'GET' && first.statusCode == HttpStatus.ok &&
+        first.headers.value('x-minstrel-transcoded') != null;
+    if (span == null && !converted) {
       yield* first;
       return;
     }
-    var pos = span.start;
+    var pos = span?.start ?? 0;
+    final end = span?.end;
     HttpClientResponse? current = first;
+    var skip = 0; // bytes of a restarted stream already passed on
     DateTime? outage;
     var delay = const Duration(milliseconds: 500);
-    while (pos <= span.end) {
+    while (end == null || pos <= end) {
       if (current == null) {
         final since = outage ??= DateTime.now();
         if (DateTime.now().difference(since) > maxOutage) {
@@ -239,9 +246,15 @@ class HomeProxy {
         await Future<void>.delayed(delay);
         delay = Duration(milliseconds: min(delay.inMilliseconds * 2, 8000));
         try {
-          final r = await link.send('GET', path, {...headers, 'range': ['bytes=$pos-${span.end}']}, null, base);
+          final range = end == null ? 'bytes=$pos-' : 'bytes=$pos-$end';
+          final r = await link.send('GET', path, {...headers, 'range': [range]}, null, base);
           if (r.statusCode == HttpStatus.partialContent && _Span.of(r)?.start == pos) {
             current = r;
+            skip = 0;
+          } else if (end == null && r.statusCode == HttpStatus.ok && r.headers.value('x-minstrel-transcoded') != null) {
+            // Converting again from the start; pass over what was played.
+            current = r;
+            skip = pos;
           } else {
             await r.drain<void>();
             continue;
@@ -251,12 +264,22 @@ class HomeProxy {
         }
       }
       try {
-        await for (final chunk in current) {
+        await for (var chunk in current) {
+          if (skip > 0) {
+            if (chunk.length <= skip) {
+              skip -= chunk.length;
+              continue;
+            }
+            chunk = chunk.sublist(skip);
+            skip = 0;
+          }
           pos += chunk.length;
           outage = null;
           delay = const Duration(milliseconds: 500);
           yield chunk;
         }
+        // A compressed stream's length is known only when it ends.
+        if (end == null && skip == 0) return;
       } on Object {
         // Connection dropped mid-file; resume below.
       }
