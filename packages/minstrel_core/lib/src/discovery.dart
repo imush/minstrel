@@ -39,9 +39,22 @@ class DeviceRegistry {
   final _changes = StreamController<void>.broadcast();
   Timer? _watch;
   bool _checking = false;
+  DateTime _lastSearch = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _started = DateTime.now();
 
   /// How often to look for a change of network.
   static const watchEvery = Duration(seconds: 5);
+
+  /// How often to search again in the background. Not every device answers
+  /// the first search (UDP gets lost, some players answer slowly or only
+  /// after waking), and on iOS the app can't hear devices announcing
+  /// themselves, so a device switched on later is found only by searching.
+  static const searchEvery = Duration(seconds: 60);
+
+  /// Searches more often in the first minute, and while the OS blocks
+  /// discovery: on iOS that is usually until the user answers the Local
+  /// Network prompt, and nothing else would search again afterwards.
+  static const searchEarly = Duration(seconds: 5);
 
   DeviceRegistry(this._http) : _soap = SoapClient(_http);
 
@@ -93,6 +106,7 @@ class DeviceRegistry {
   MediaRenderer? renderer(String udn) => _renderers[udn];
 
   Future<void> start() async {
+    _started = DateTime.now();
     await _ssdp.start();
     _sub = _ssdp.messages.listen(_onSsdp);
     _watch = Timer.periodic(watchEvery, (_) => _checkNetwork());
@@ -106,9 +120,16 @@ class DeviceRegistry {
     if (_checking) return;
     _checking = true;
     try {
-      if (!await _ssdp.networkChanged()) return;
-      forgetLan();
-      await refresh();
+      if (await _ssdp.networkChanged()) {
+        forgetLan();
+        await refresh();
+        return;
+      }
+      final now = DateTime.now();
+      final early = localNetworkDenied || now.difference(_started) < const Duration(minutes: 1);
+      if (now.difference(_lastSearch) >= (early ? searchEarly : searchEvery)) {
+        await _search();
+      }
     } on Object {
       // Tried again on the next tick.
     } finally {
@@ -128,11 +149,19 @@ class DeviceRegistry {
   /// devices found earlier that no longer answer: after leaving the home
   /// network they never say goodbye.
   Future<void> refresh() async {
-    await _ssdp.search();
+    await _search();
     for (final m in _manual) {
       unawaited(_load(m));
     }
     await _dropGone();
+  }
+
+  Future<void> _search() async {
+    _lastSearch = DateTime.now();
+    final denied = localNetworkDenied;
+    await _ssdp.search();
+    // Let the servers page drop or show its "not allowed" note.
+    if (localNetworkDenied != denied) _changes.add(null);
   }
 
   Future<void> _dropGone() async {

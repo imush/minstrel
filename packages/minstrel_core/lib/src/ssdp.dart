@@ -65,6 +65,8 @@ class SsdpClient {
 
   /// Set when the OS refuses multicast with "no route to host", which on
   /// Apple platforms means the user hasn't allowed Local Network access.
+  /// Each search starts by assuming it is allowed again: on iOS the first
+  /// search usually goes out while the permission prompt is still showing.
   bool localNetworkDenied = false;
 
   /// Opens one socket per IPv4 interface so that searches go out on every
@@ -118,6 +120,7 @@ class SsdpClient {
       await stop();
       await start();
     }
+    localNetworkDenied = false;
     for (var round = 0; round < 2; round++) {
       for (final s in _sockets) {
         for (final st in searchTargets) {
@@ -176,7 +179,10 @@ class SsdpClient {
     Datagram? d;
     while ((d = s.receive()) != null) {
       final msg = SsdpMessage.parse(d!.data, d.address);
-      if (msg != null) _controller.add(msg);
+      if (msg != null) {
+        localNetworkDenied = false;
+        _controller.add(msg);
+      }
     }
   }
 
