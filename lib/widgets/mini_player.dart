@@ -22,6 +22,7 @@ class MiniPlayer extends StatelessWidget {
           child: SafeArea(
             top: false,
             child: InkWell(
+              key: const ValueKey('mini-player'),
               onTap: () => Navigator.push(
                   context, MaterialPageRoute<void>(builder: (_) => const NowPlayingPage())),
               child: Column(

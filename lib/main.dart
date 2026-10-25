@@ -17,6 +17,7 @@ class MinstrelApp extends StatelessWidget {
     const seed = Color(0xFF6B4E9B);
     return MaterialApp(
       title: 'Minstrel',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(colorSchemeSeed: seed, useMaterial3: true),
       darkTheme: ThemeData(
           colorSchemeSeed: seed, brightness: Brightness.dark, useMaterial3: true),
