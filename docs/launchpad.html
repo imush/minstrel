@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Setting up the launchpad — Minstrel Player</title>
-<meta name="description" content="Install minstrel-launchpad at home to play your UPnP/DLNA library from the Minstrel app anywhere: direct mode with a static IP or dynamic DNS, Headscale coming soon.">
+<meta name="description" content="Install minstrel-launchpad at home to play your UPnP/DLNA library from the Minstrel app anywhere: direct mode with a static IP or dynamic DNS, or a satellite relay when no port can be opened.">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta property="og:image" content="https://minstrelplayer.org/social.png">
@@ -41,10 +41,10 @@
 
   <p><strong>minstrel-launchpad</strong> is a small program that runs at home, next to your media server. Away from home, the Minstrel app connects to it, and it passes the app's requests to your media servers and nothing else. Only devices you paired get in; each has its own key, and you can remove any of them.</p>
 
-  <p>It connects to the app in one of two ways:</p>
+  <p>It connects to the app in one of two ways, or both:</p>
   <ul>
     <li><strong>Direct</strong>: the app connects straight to your home through one port on your router. Needs a fixed way to find your home on the internet: a <em>static IP</em> or a <em>dynamic DNS</em> name.</li>
-    <li><strong>Headscale</strong>: <em>coming soon</em>. For homes that can't open a port (see <a href="#headscale">below</a>).</li>
+    <li><strong>Satellite</strong>: the launchpad connects out to a relay on the internet, so no port is opened at home. For homes behind carrier-grade NAT, or anyone who'd rather not forward a port (see <a href="#satellite">below</a>).</li>
   </ul>
 
   <h2 id="where">1. Choose where it runs</h2>
@@ -114,7 +114,7 @@ cat /var/log/launchpad.log          # shows the console's setup link</code></pre
 
   <h3>When direct mode can't work</h3>
   <ul>
-    <li><strong>Carrier-grade NAT.</strong> If the address your router shows as its WAN IP is different from the one sites like “what is my IP” report, or starts with <code>100.64</code> to <code>100.127</code>, your provider shares one public address among many homes, and no port can be opened. Ask the provider for a public IP, or wait for Headscale mode.</li>
+    <li><strong>Carrier-grade NAT.</strong> If the address your router shows as its WAN IP is different from the one sites like “what is my IP” report, or starts with <code>100.64</code> to <code>100.127</code>, your provider shares one public address among many homes, and no port can be opened. Ask the provider for a public IP, or use a <a href="#satellite">satellite</a>.</li>
     <li><strong>Two routers.</strong> If your router sits behind your provider's router, forward the port on both, or put the provider's box in bridge mode.</li>
   </ul>
 
@@ -126,8 +126,45 @@ cat /var/log/launchpad.log          # shows the console's setup link</code></pre
   </ul>
   <p>Each invitation works once. The console lists <em>Paired devices</em> with when each last connected and from where; <em>Revoke</em> removes one. In the app, the home appears under <strong>Homes</strong>; ⋮ → <strong>Rename</strong> names it just on that phone.</p>
 
-  <h2 id="headscale">Headscale mode <small class="soon">Coming soon</small></h2>
-  <p>For homes behind carrier-grade NAT, or anyone who'd rather not open a port. The launchpad and your phones join a private network run by <a href="https://headscale.net/">Headscale</a>, a self-hosted, open-source coordination server compatible with Tailscale clients. Your home then needs no open port and no public address; the connection is end-to-end encrypted, and a relay is used only when a direct path can't be found. You'll be able to run your own Headscale server, or use one someone you trust runs. Watch <a href="https://github.com/imush/minstrel-launchpad">the repository</a> for it.</p>
+  <h2 id="satellite">Satellite mode: no port to open</h2>
+  <p>A <strong>minstrel-satellite</strong> is a small relay on the internet. Your launchpad connects out to it and keeps the line open, and your home gets a name under the satellite's domain. Away from home, the app tries your direct address first, if you have one, and goes through the satellite only when that doesn't answer.</p>
+  <p>The connection stays encrypted end to end, between the app and your launchpad. The satellite holds no keys for it and can't read or change your music; it sees only which home the traffic is for, how much passes, and when.</p>
+
+  <h3>Join a satellite</h3>
+  <ol>
+    <li>Get an <strong>invitation link</strong> from the satellite's owner. It looks like <code>minstrel-satellite://sat.example.org:443?c=…&amp;fp=…</code>, works once and is valid for a day.</li>
+    <li>On the launchpad's console, open <em>Outside access → Satellite</em>, paste the link and <strong>Save</strong>.</li>
+    <li>The status line should read <em>Connected to sat.example.org</em>, with the name the app will use for your home. From then on the launchpad reconnects by itself, after restarts and network outages.</li>
+    <li>New invitations include the satellite. Devices paired earlier pick it up the next time they connect at home, so open the app once on your Wi-Fi.</li>
+  </ol>
+  <p>Nothing to do on the router: the launchpad only makes an outgoing connection on port 443. <em>Leave satellite</em> on the same tab stops using it. A satellite may limit each home's speed and monthly data, because relayed traffic costs its owner; at CD quality, music needs about 1&nbsp;Mbit/s, and choosing a compressed quality in the app's settings uses much less.</p>
+
+  <h3>Check it</h3>
+  <p>With Wi-Fi off on your phone, open the home in the app. Under Homes it should read <em>Connected through the satellite</em> (or <em>Connected from outside</em>, if your direct address answered first). If the console shows “refused this launchpad”, the invitation was used or expired: ask for a new one.</p>
+
+  <h3>Run your own satellite</h3>
+  <p>For a family or a group of friends, one satellite can serve many homes. It needs a small always-on machine with a public IP, such as a cloud VM, and a domain name you control. FreeBSD is the intended setup, and its service files are included; the program also builds for Linux.</p>
+  <ol>
+    <li><strong>DNS</strong>: point the satellite's name and everything under it at the machine:
+      <pre><code>sat.example.org.     A     203.0.113.10
+*.sat.example.org.   A     203.0.113.10</code></pre></li>
+    <li><strong>Build</strong> it on any computer with <a href="https://go.dev/dl/">Go</a>:
+      <pre><code>git clone https://github.com/imush/minstrel-satellite && cd minstrel-satellite
+GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 go build -o minstrel-satellite .</code></pre></li>
+    <li><strong>Install</strong> on the machine, with the files from <code>contrib/freebsd</code>. It runs as its own unprivileged user on port 7443, and pf redirects 443 to it:
+      <pre><code>pw useradd satellite -d /nonexistent -s /usr/sbin/nologin
+install -m 755 minstrel-satellite /usr/local/bin/
+install -m 555 contrib/freebsd/satellite /usr/local/etc/rc.d/
+sysrc satellite_enable=YES satellite_domain=sat.example.org
+cp contrib/freebsd/pf.conf /etc/pf.conf      # check ext_if first
+sysrc pf_enable=YES &amp;&amp; service pf start
+service satellite start</code></pre>
+      Its log is <code>/var/log/satellite.log</code>.</li>
+    <li><strong>Invite a home</strong>, one link per launchpad:
+      <pre><code>minstrel-satellite invite -data /var/db/satellite -label "Lake house"</code></pre>
+      Send the printed link to that home's owner, who pastes it into their console as above. The link carries the satellite's key fingerprint, so a launchpad can't be sent to an impostor.</li>
+  </ol>
+  <p>Optional limits, for all homes or per home: <code>-rate 4Mbit</code> (top speed), <code>-quota 100GB</code> (data per month at full speed) and <code>-over-rate 1Mbit</code> (speed after that). <code>minstrel-satellite homes</code> lists the homes and their use this month; <code>remove</code> drops one. All commands and options are in the satellite's <a href="https://github.com/imush/minstrel-satellite#readme">README</a>.</p>
 
   <h2 id="safety">How it's kept safe</h2>
   <ul>
@@ -141,6 +178,7 @@ cat /var/log/launchpad.log          # shows the console's setup link</code></pre
   <h2 id="trouble">Troubleshooting</h2>
   <ul>
     <li><strong>“Can't reach home” in the app</strong>: the Homes list shows each address tried and what happened. “No answer” on the outside address usually means the port forward or dynamic DNS isn't right; check with the browser test above.</li>
+    <li><strong>Not reaching home through the satellite</strong>: if the phone was paired before the launchpad joined, it doesn't know the satellite yet. Open the app once at home, on the same Wi-Fi, and it picks the satellite up.</li>
     <li><strong>No media servers on the console</strong>: the launchpad isn't on the same network segment as the server, or multicast is blocked. In Docker use <code>--network host</code>; in a jail or VM use bridged networking. Or add the server's description URL by hand.</li>
     <li><strong>Forgot the console password</strong>: run <code>minstrel-launchpad console</code> on the launchpad for a new setup link (add <code>-data</code> with its data directory if you set one, such as <code>-data /var/db/launchpad</code> in a FreeBSD jail, as the user it runs as).</li>
   </ul>
