@@ -44,7 +44,7 @@
   <h2 id="install">1. Install</h2>
   <ul>
     <li><strong>Android</strong>: Google Play. <em>Coming soon.</em></li>
-    <li><strong>iPhone</strong>: the App Store, as “Minstrel Player”. <em>Coming soon.</em></li>
+    <li><strong>iPhone</strong>: the App Store, as “Minstrel Media Player”. <em>Coming soon.</em></li>
   </ul>
   <p>Until then, developers can build it from <a href="https://github.com/imush/minstrel">the source on GitHub</a> with Flutter.</p>
 
@@ -80,14 +80,13 @@
 
   <h2 id="settings">Settings</h2>
   <ul>
-    <li><strong>Quality</strong>: <em>Best available</em> plays the original files, lossless where the player supports it. <em>Data saver</em> picks the smallest version the server already offers, for mobile data.</li>
+    <li><strong>Quality</strong>: <em>Best available</em> plays the original files, lossless where the player supports it. <em>Data saver</em> picks the smallest version the server already offers.</li>
+    <li><strong>Away from home</strong>: <em>Original quality</em>, or have your launchpad compress lossless files to AAC (320, 256, 192 or 128&nbsp;kbit/s) to save mobile data. The conversion happens on the launchpad at home, which needs ffmpeg installed; players and music at home always get the original.</li>
   </ul>
 
-  <h2 id="later">Coming later</h2>
-  <ul>
-    <li><strong>Android Auto and CarPlay.</strong> Minstrel among the car's audio apps: Recent (folders you played from) and Library (your servers), with search and voice (“play <em>album</em> on Minstrel”). Audio only, played from the phone. Away from your Wi-Fi the car reaches your music through <a href="launchpad">the launchpad</a>.</li>
-    <li><strong>Transcoding.</strong> Converting lossless files to a compact format on the way, for mobile data and slow connections. Until then, data saver can only choose among the versions your server already provides.</li>
-  </ul>
+  <h2 id="car">In the car</h2>
+  <p>With Android Auto or CarPlay, Minstrel is among the car's audio apps: <strong>Recent</strong> (folders you played from) and <strong>Library</strong> (your servers), with search and voice (“play <em>album</em> on Minstrel”). Audio only, played from the phone. Away from your Wi-Fi the car reaches your music through <a href="launchpad">the launchpad</a>; choose a compressed quality under Settings → <em>Away from home</em> to go easy on mobile data.</p>
+  <p>While the car is moving, the car limits how far you can scroll a long list; that's the car's safety rule, not the app.</p>
 
   <h2 id="vpn">Over a VPN</h2>
   <p>If you already reach home with a VPN, discovery can't see across it. Use <strong>Add server by address</strong> on the main screen and enter the server's description URL, such as <code>http://192.168.1.9:9791/…/device.xml</code> (your server's settings or log usually show it).</p>
