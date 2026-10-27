@@ -65,7 +65,7 @@ h3 { margin: 0 0 8px; font-size: 21px; letter-spacing: -0.01em; }
 .steps p { margin: 0; color: var(--ink-soft); }
 .note { margin-top: 32px; color: var(--ink-soft); }
 
-.open { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.open { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
 .repo { display: block; padding: 28px; border-radius: 14px; background: var(--midnight); color: var(--parchment) !important; text-decoration: none; }
 .repo:hover { background: var(--indigo); }
 .repo .name { font-family: var(--mono); font-size: 15px; color: var(--brass); }
