@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
@@ -33,27 +34,40 @@ class NowPlayingPage extends StatelessWidget {
           final item = snap.data;
           if (item == null) return const Center(child: Text('Nothing playing'));
           final composer = item.extras?['composer'] as String?;
-          return LayoutBuilder(builder: (context, box) {
-            final artSize = (box.maxWidth - 64).clamp(120.0, 420.0);
-            return ListView(
-              // Clear of the gesture bar, so the volume slider isn't under it.
-              padding: EdgeInsets.fromLTRB(32, 8, 32, 16 + MediaQuery.paddingOf(context).bottom),
+          // Everything on one screen, no scrolling: the cover takes the
+          // height the rest leaves, and long titles are cut short.
+          return Padding(
+            padding: EdgeInsets.fromLTRB(32, 0, 32, 8 + MediaQuery.paddingOf(context).bottom),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(child: CoverArt(item.artUri, size: artSize)),
-                const SizedBox(height: 24),
+                Expanded(
+                  child: LayoutBuilder(builder: (context, box) {
+                    final size = math.min(box.maxWidth, box.maxHeight - 16).clamp(0.0, 420.0);
+                    return size < 80
+                        ? const SizedBox.shrink()
+                        : Center(child: CoverArt(item.artUri, size: size));
+                  }),
+                ),
                 if (composer != null)
                   Text(composer,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.primary)),
-                Text(item.title, style: theme.textTheme.headlineSmall),
-                if (item.artist != null) Text(item.artist!, style: theme.textTheme.titleMedium),
+                Text(item.title,
+                    maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleLarge),
+                if (item.artist != null)
+                  Text(item.artist!,
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall),
                 if (item.album != null)
                   Text(item.album!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium
                           ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
                 _Progress(duration: item.duration),
                 const _Controls(),
-                const SizedBox(height: 8),
                 ListenableBuilder(
                   listenable: player.outputListenable,
                   builder: (context, _) => Column(children: [
@@ -77,8 +91,8 @@ class NowPlayingPage extends StatelessWidget {
                   ]),
                 ),
               ],
-            );
-          });
+            ),
+          );
         },
       ),
     );
@@ -176,8 +190,15 @@ class _Volume extends StatefulWidget {
   State<_Volume> createState() => _VolumeState();
 }
 
+/// A network player's volume, 0 to 100. Amplifiers are usually loud
+/// enough at 10 to 30, so the slider follows a curve: 20 sits near its
+/// middle-left instead of a fifth of the way along, giving the usual levels
+/// most of its length.
 class _VolumeState extends State<_Volume> {
   double? _volume;
+
+  static double _toSlider(double volume) => math.sqrt(volume.clamp(0, 100) / 100);
+  static int _toVolume(double slider) => (slider * slider * 100).round();
 
   @override
   void initState() {
@@ -194,13 +215,13 @@ class _VolumeState extends State<_Volume> {
       const Icon(Icons.volume_down),
       Expanded(
         child: Slider(
-          value: _volume!.clamp(0, 100),
-          max: 100,
-          onChanged: (v) => setState(() => _volume = v),
-          onChangeEnd: (v) => widget.output.setVolume(v.round()),
+          value: _toSlider(_volume!),
+          onChanged: (v) => setState(() => _volume = _toVolume(v).toDouble()),
+          onChangeEnd: (v) => widget.output.setVolume(_toVolume(v)),
         ),
       ),
       const Icon(Icons.volume_up),
+      SizedBox(width: 32, child: Text('${_volume!.round()}', textAlign: TextAlign.end)),
     ]);
   }
 }
