@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 
 import '../app_services.dart';
 import '../playback/renderer_output.dart';
+import '../playback/system_volume.dart';
 import '../widgets/cover_art.dart';
 import '../widgets/output_picker.dart';
 
@@ -33,7 +36,8 @@ class NowPlayingPage extends StatelessWidget {
           return LayoutBuilder(builder: (context, box) {
             final artSize = (box.maxWidth - 64).clamp(120.0, 420.0);
             return ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 8),
+              // Clear of the gesture bar, so the volume slider isn't under it.
+              padding: EdgeInsets.fromLTRB(32, 8, 32, 16 + MediaQuery.paddingOf(context).bottom),
               children: [
                 Center(child: CoverArt(item.artUri, size: artSize)),
                 const SizedBox(height: 24),
@@ -67,7 +71,9 @@ class NowPlayingPage extends StatelessWidget {
                       ],
                     ),
                     if (player.output is RendererOutput)
-                      _Volume(key: ValueKey(player.output.id), output: player.output as RendererOutput),
+                      _Volume(key: ValueKey(player.output.id), output: player.output as RendererOutput)
+                    else if (player.output.isLocal)
+                      const _PhoneVolume(),
                   ]),
                 ),
               ],
@@ -192,6 +198,60 @@ class _VolumeState extends State<_Volume> {
           max: 100,
           onChanged: (v) => setState(() => _volume = v),
           onChangeEnd: (v) => widget.output.setVolume(v.round()),
+        ),
+      ),
+      const Icon(Icons.volume_up),
+    ]);
+  }
+}
+
+/// The phone's media volume, kept in step with the side buttons.
+class _PhoneVolume extends StatefulWidget {
+  const _PhoneVolume();
+
+  @override
+  State<_PhoneVolume> createState() => _PhoneVolumeState();
+}
+
+class _PhoneVolumeState extends State<_PhoneVolume> {
+  double? _volume;
+  bool _dragging = false;
+  StreamSubscription<double>? _changes;
+
+  @override
+  void initState() {
+    super.initState();
+    SystemVolume.get().then((v) {
+      if (mounted && v != null) setState(() => _volume = v);
+    });
+    _changes = SystemVolume.changes.listen((v) {
+      if (mounted && !_dragging) setState(() => _volume = v);
+    });
+  }
+
+  @override
+  void dispose() {
+    _changes?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_volume == null) return const SizedBox.shrink();
+    return Row(children: [
+      const Icon(Icons.volume_down),
+      Expanded(
+        child: Slider(
+          value: _volume!.clamp(0, 1),
+          onChangeStart: (_) => _dragging = true,
+          onChanged: (v) {
+            setState(() => _volume = v);
+            SystemVolume.set(v);
+          },
+          onChangeEnd: (v) {
+            _dragging = false;
+            SystemVolume.set(v);
+          },
         ),
       ),
       const Icon(Icons.volume_up),
