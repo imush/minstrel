@@ -36,11 +36,19 @@ class DeviceRegistry {
   final _renderers = <String, MediaRenderer>{};
   final _pending = <Uri>{};
   final _manual = <Uri>{};
+  final _remembered = <Uri>{}; // oldest first
   final _changes = StreamController<void>.broadcast();
   Timer? _watch;
   bool _checking = false;
   DateTime _lastSearch = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _started = DateTime.now();
+
+  /// How many LAN devices to remember, the most recently found kept.
+  static const rememberMost = 30;
+
+  /// Called with the remembered devices when one is added, to be kept for
+  /// the next start; see [remember].
+  void Function(List<Uri> locations)? onRemembered;
 
   /// How often to look for a change of network.
   static const watchEvery = Duration(seconds: 5);
@@ -71,6 +79,19 @@ class DeviceRegistry {
   /// The OS blocked discovery; on Apple platforms the user must allow
   /// Local Network access in Settings.
   bool get localNetworkDenied => _ssdp.localNetworkDenied;
+
+  /// The OS blocked the multicast search but not the local network: only
+  /// remembered devices and those added by URL are found.
+  bool get multicastBlocked => _ssdp.multicastBlocked;
+
+  /// Devices found on the LAN before, by description URL, to try directly
+  /// at every search. Fetching a description needs only Local Network
+  /// access, while the SSDP search needs multicast, which iOS allows only
+  /// with Apple's entitlement and busy Wi-Fi often loses; so a device found
+  /// once keeps being found. Those not answering are simply not listed.
+  void remember(Iterable<Uri> locations) {
+    _remembered.addAll(locations);
+  }
 
   MediaServer? server(String udn) => _servers[udn] ?? _remote[udn];
 
@@ -158,10 +179,17 @@ class DeviceRegistry {
 
   Future<void> _search() async {
     _lastSearch = DateTime.now();
-    final denied = localNetworkDenied;
+    final shown = (localNetworkDenied, multicastBlocked);
+    final listed = {
+      for (final s in _servers.values) s.device.location,
+      for (final r in _renderers.values) r.device.location,
+    };
+    for (final r in _remembered.difference(listed)) {
+      unawaited(_load(r));
+    }
     await _ssdp.search();
-    // Let the servers page drop or show its "not allowed" note.
-    if (localNetworkDenied != denied) _changes.add(null);
+    // Let the servers page drop or show its note.
+    if ((localNetworkDenied, multicastBlocked) != shown) _changes.add(null);
   }
 
   Future<void> _dropGone() async {
@@ -247,7 +275,10 @@ class DeviceRegistry {
         _renderers[renderer.udn] = renderer;
         changed = true;
       }
-      if (changed) _changes.add(null);
+      if (changed) {
+        _changes.add(null);
+        if (!_manual.contains(location)) _rememberFound(location);
+      }
       return devices;
     } on Object {
       if (rethrowErrors) rethrow;
@@ -255,6 +286,18 @@ class DeviceRegistry {
     } finally {
       _pending.remove(location);
     }
+  }
+
+  void _rememberFound(Uri location) {
+    if (_remembered.remove(location)) {
+      _remembered.add(location); // now the most recent; no need to save
+      return;
+    }
+    _remembered.add(location);
+    while (_remembered.length > rememberMost) {
+      _remembered.remove(_remembered.first);
+    }
+    onRemembered?.call(_remembered.toList());
   }
 
   Future<void> dispose() async {

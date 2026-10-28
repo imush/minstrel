@@ -32,6 +32,7 @@ class AppServices {
   AppServices._(this.http_, this.registry, this.player, this.prefs, this.homes, this.car);
 
   static const _manualKey = 'manualDevices';
+  static const _rememberedKey = 'rememberedDevices';
   static const _qualityKey = 'quality';
   static const _keepAliveKey = 'iosKeepAlive';
   static const _compressionKey = 'awayCompression';
@@ -64,7 +65,10 @@ class AppServices {
             .firstOrNull ??
         QualityPreference.best;
     player.keepAliveEnabled = prefs.getBool(_keepAliveKey) ?? true;
-    final registry = DeviceRegistry(client);
+    final registry = DeviceRegistry(client)
+      ..remember([for (final l in prefs.getStringList(_rememberedKey) ?? const <String>[]) Uri.parse(l)])
+      ..onRemembered = (locations) =>
+          unawaited(prefs.setStringList(_rememberedKey, [for (final l in locations) l.toString()]));
     final car = CarLibrary(RegistrySource(registry), PhonePlayer(player), PrefsHistory(prefs));
     player.attachCar(car);
     instance = AppServices._(client, registry, player, prefs, await Homes.start(registry), car);

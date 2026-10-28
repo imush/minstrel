@@ -135,7 +135,10 @@ class _ServersPageState extends State<ServersPage> {
                   _app.registry.localNetworkDenied
                       ? 'Minstrel isn\'t allowed to search this network. '
                           'Turn on Local Network access for Minstrel in Settings > Privacy.'
-                      : 'Looking for music servers… Servers on this network appear automatically. '
+                      : _app.registry.multicastBlocked
+                          ? 'This phone is blocking Minstrel\'s search for servers. Servers found before are '
+                              'still tried. Pull down to search again, or add a server by address.'
+                          : 'Looking for music servers… Servers on this network appear automatically. '
                           'Away from home, pair with your home\'s launchpad (Add home), '
                           'or add a server by address over a VPN.',
                 ),

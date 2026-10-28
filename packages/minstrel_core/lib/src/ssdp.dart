@@ -63,11 +63,21 @@ class SsdpClient {
 
   Stream<SsdpMessage> get messages => _controller.stream;
 
-  /// Set when the OS refuses multicast with "no route to host", which on
-  /// Apple platforms means the user hasn't allowed Local Network access.
-  /// Each search starts by assuming it is allowed again: on iOS the first
-  /// search usually goes out while the permission prompt is still showing.
+  /// Set when the OS refuses even a direct (unicast) packet to the local
+  /// network: on Apple platforms, the user hasn't allowed Local Network
+  /// access. Each search starts by assuming it is allowed again: on iOS the
+  /// first search usually goes out while the permission prompt is showing.
   bool localNetworkDenied = false;
+
+  /// Set when the OS refuses the multicast search but lets a direct packet
+  /// through: Local Network access is allowed, but iOS keeps multicast for
+  /// apps with Apple's multicast entitlement. Devices are then found only
+  /// at addresses already known.
+  bool multicastBlocked = false;
+
+  /// A search was refused with "no route to host"; which of the two it was
+  /// is told apart after the search.
+  bool _refused = false;
 
   /// Opens one socket per IPv4 interface so that searches go out on every
   /// network (Wi-Fi and Ethernet on a desktop, for example), and joins the
@@ -120,7 +130,7 @@ class SsdpClient {
       await stop();
       await start();
     }
-    localNetworkDenied = false;
+    _refused = false;
     for (var round = 0; round < 2; round++) {
       for (final s in _sockets) {
         for (final st in searchTargets) {
@@ -132,22 +142,67 @@ class SsdpClient {
               'USER-AGENT: minstrel/0.1 UPnP/1.1\r\n\r\n';
           try {
             s.send(utf8.encode(msg), _group, _port);
-          } on SocketException {
-            // Network changed under us; the next search reopens the sockets.
+          } on SocketException catch (e) {
+            // Refused, or the network changed under us; the next search
+            // reopens the sockets.
+            _onSocketError(e);
           }
         }
       }
       await Future<void>.delayed(const Duration(milliseconds: 300));
     }
+    if (!_refused) {
+      localNetworkDenied = multicastBlocked = false;
+    } else if (_sockets.isNotEmpty) {
+      final denied = await _unicastRefused(_sockets.first.address);
+      localNetworkDenied = denied;
+      multicastBlocked = !denied;
+    }
   }
+
+  /// Sends one datagram straight to another address on the network (the
+  /// discard port of the usual router address), to see whether the OS
+  /// refuses the local network as a whole or only multicast.
+  static Future<bool> _unicastRefused(InternetAddress local) async {
+    final b = local.rawAddress;
+    final to = InternetAddress.fromRawAddress(Uint8List.fromList([b[0], b[1], b[2], b[3] == 1 ? 2 : 1]));
+    RawDatagramSocket? s;
+    try {
+      s = await RawDatagramSocket.bind(local, 0);
+      final refused = Completer<bool>();
+      s.listen((_) {}, onError: (Object e) {
+        if (!refused.isCompleted) refused.complete(_isRefusal(e));
+      });
+      try {
+        s.send(const [0], to, 9);
+      } on SocketException catch (e) {
+        return _isRefusal(e);
+      }
+      return await refused.future.timeout(const Duration(milliseconds: 500), onTimeout: () => false);
+    } on Object {
+      return false;
+    } finally {
+      s?.close();
+    }
+  }
+
+  static bool _isRefusal(Object e) => e is SocketException && e.osError?.errorCode == 65;
 
   static Future<List<NetworkInterface>> _interfaces() async {
     try {
-      return await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false);
+      final all = await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false);
+      return all.where(_isLan).toList();
     } on Object {
       return const [];
     }
   }
+
+  /// On Apple platforms, Wi-Fi and Ethernet are en*, and a shared hotspot is
+  /// bridge*. The rest (cellular pdp_ip*, VPN utun* and ipsec*, AirDrop's
+  /// awdl* and llw*) never have UPnP devices, and refuse multicast with the
+  /// same "no route to host" as a missing Local Network permission.
+  static bool _isLan(NetworkInterface i) =>
+      !(Platform.isIOS || Platform.isMacOS) || i.name.startsWith('en') || i.name.startsWith('bridge');
 
   static Set<String> _addressesOf(List<NetworkInterface> interfaces) =>
       {for (final i in interfaces) for (final a in i.addresses) '${i.name}/${a.address}'};
@@ -166,12 +221,10 @@ class SsdpClient {
     }
   }
 
-  /// Send failures arrive asynchronously on the socket stream. On macOS and
-  /// iOS, EHOSTUNREACH here usually means Local Network access was denied.
+  /// Send failures may also arrive asynchronously on the socket stream. On
+  /// macOS and iOS, EHOSTUNREACH means the OS refused: see [search].
   void _onSocketError(Object error) {
-    if (error is SocketException && error.osError?.errorCode == 65) {
-      localNetworkDenied = true;
-    }
+    if (_isRefusal(error)) _refused = true;
   }
 
   void _onEvent(RawDatagramSocket s, RawSocketEvent event) {
@@ -180,7 +233,7 @@ class SsdpClient {
     while ((d = s.receive()) != null) {
       final msg = SsdpMessage.parse(d!.data, d.address);
       if (msg != null) {
-        localNetworkDenied = false;
+        localNetworkDenied = multicastBlocked = false;
         _controller.add(msg);
       }
     }
