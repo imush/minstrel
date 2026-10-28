@@ -386,8 +386,14 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
     );
     final index = s.index >= 0 ? s.index : _pendingIndex;
     final hasItem = index >= 0 && index < _entries.length;
+    // Players learn a track's length only after it starts, and may report
+    // zero until then (ExoPlayer at a gapless switch, renderers before the
+    // next track's first poll): zero means not known yet.
+    final reported = s.index >= 0 && s.duration != null && s.duration! > Duration.zero ? s.duration : null;
     if (hasItem && mediaItem.value?.id != _entries[index].resource.uri.toString()) {
-      mediaItem.add(_mediaItem(_entries[index], s.index >= 0 ? s.duration : null));
+      mediaItem.add(_mediaItem(_entries[index], reported));
+    } else if (hasItem && reported != null && mediaItem.value?.duration != reported) {
+      mediaItem.add(mediaItem.value!.copyWith(duration: reported));
     }
     if (index != _savedIndex ||
         (s.playing && DateTime.now().difference(_savedAt) > const Duration(seconds: 15))) {
@@ -423,6 +429,8 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
     ));
   }
 
+  static Duration? _known(Duration? d) => d != null && d > Duration.zero ? d : null;
+
   MediaItem _mediaItem(QueueEntry e, [Duration? duration]) {
     final i = e.item;
     final composer = i.composer;
@@ -432,7 +440,7 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
       artist: i.performer,
       album: i.album,
       artUri: i.albumArt,
-      duration: duration ?? e.resource.duration ?? i.duration,
+      duration: duration ?? _known(e.resource.duration) ?? _known(i.duration),
       displaySubtitle: composer != null ? '$composer · ${i.performer ?? ''}' : i.performer,
       extras: {'format': e.resource.formatLabel, 'composer': ?composer},
     );
