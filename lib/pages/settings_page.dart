@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:minstrel_core/minstrel_core.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../app_services.dart';
 
@@ -79,8 +80,30 @@ class _SettingsPageState extends State<SettingsPage> {
               RadioListTile(value: 'aac-128', title: Text('Data saver'), subtitle: Text('AAC 128 kbit/s, about 1 MB a minute')),
             ]),
           ),
+          const Divider(),
+          const AppVersion(),
         ],
       ),
     );
   }
+}
+
+/// The version and build, for reports from testers.
+class AppVersion extends StatelessWidget {
+  const AppVersion({super.key});
+
+  static final _info = PackageInfo.fromPlatform();
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder(
+        future: _info,
+        builder: (context, snap) => Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            snap.hasData ? 'Minstrel ${snap.data!.version} (build ${snap.data!.buildNumber})' : '',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+      );
 }
