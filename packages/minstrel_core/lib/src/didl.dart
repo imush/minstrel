@@ -162,7 +162,30 @@ sealed class DidlObject {
     final c = withRole('Conductor').toSet();
     return c.isEmpty ? null : c.join(', ');
   }
+
+  /// Tags in [rawXml] that have no field of their own, such as
+  /// upnp:albumArtist, dc:description or a server's own extras, in the
+  /// order the server sent them.
+  List<({String name, String? role, String value})> get otherTags {
+    try {
+      final e = XmlDocument.parse(rawXml).rootElement;
+      return [
+        for (final c in e.childElements)
+          if (!_ownFields.contains(c.name.local) && c.innerText.trim().isNotEmpty)
+            (name: c.name.local, role: _role(c), value: c.innerText.trim()),
+      ];
+    } on XmlException {
+      return const [];
+    }
+  }
 }
+
+/// Tags parsed into fields of [DidlObject] and [DidlItem], or of no
+/// interest to a listener.
+const _ownFields = {
+  'title', 'artist', 'creator', 'album', 'originalTrackNumber', 'genre', 'date', //
+  'res', 'class', 'albumArtURI', 'writeStatus',
+};
 
 class DidlContainer extends DidlObject {
   final int? childCount;

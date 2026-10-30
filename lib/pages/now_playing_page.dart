@@ -9,6 +9,7 @@ import '../playback/renderer_output.dart';
 import '../playback/system_volume.dart';
 import '../widgets/cover_art.dart';
 import '../widgets/output_picker.dart';
+import '../widgets/track_info.dart';
 
 class NowPlayingPage extends StatelessWidget {
   const NowPlayingPage({super.key});
@@ -20,6 +21,19 @@ class NowPlayingPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         actions: [
+          StreamBuilder<PlaybackState>(
+            stream: player.playbackState,
+            builder: (context, snap) {
+              final i = snap.data?.queueIndex;
+              final entries = player.entries;
+              if (i == null || i < 0 || i >= entries.length) return const SizedBox.shrink();
+              return IconButton(
+                tooltip: 'Track info',
+                icon: const Icon(Icons.info_outline),
+                onPressed: () => showTrackInfo(context, entries[i].item, resource: entries[i].resource),
+              );
+            },
+          ),
           IconButton(
             tooltip: 'Queue',
             icon: const Icon(Icons.queue_music),
@@ -341,6 +355,12 @@ class _QueuePage extends StatelessWidget {
                               ),
                       ]),
                       onTap: () => player.skipToQueueItem(i),
+                      onLongPress: () {
+                        final entries = player.entries;
+                        if (i < entries.length) {
+                          showTrackInfo(context, entries[i].item, resource: entries[i].resource);
+                        }
+                      },
                     ),
                   );
                 },

@@ -8,6 +8,7 @@ import '../widgets/cover_art.dart';
 import '../widgets/mini_player.dart';
 import '../widgets/output_button.dart';
 import '../widgets/queue_actions.dart';
+import '../widgets/track_info.dart';
 
 /// One level of a server's browse tree. MinimServer trees go many levels
 /// deep (Composer > name > Work > Performer > ...), so this page simply
@@ -202,6 +203,7 @@ class _BrowsePageState extends State<BrowsePage> {
                             title: item.title,
                             playNowLabel: 'Play from here',
                             playNow: () => _play(item),
+                            info: () => showTrackInfo(context, item),
                             tracks: () async => [item]),
                       ),
                   };

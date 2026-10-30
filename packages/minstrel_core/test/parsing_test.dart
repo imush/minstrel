@@ -71,6 +71,20 @@ void main() {
       expect(again.resources.single.uri, item.resources.single.uri);
     });
 
+    test('tags without a field of their own are kept for display', () {
+      const xml = '<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" '
+          'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/">'
+          '<item id="1" parentID="0"><dc:title>T</dc:title><upnp:artist>A</upnp:artist>'
+          '<upnp:albumArtist role="AlbumArtist">B</upnp:albumArtist><dc:description>Live, 1993</dc:description>'
+          '<upnp:class>object.item.audioItem.musicTrack</upnp:class><upnp:rating> </upnp:rating></item>'
+          '</DIDL-Lite>';
+      final item = parseDidlLite(xml).single;
+      expect(item.otherTags, [
+        (name: 'albumArtist', role: 'AlbumArtist', value: 'B'),
+        (name: 'description', role: null, value: 'Live, 1993'),
+      ]);
+    });
+
     test('vendor namespace declared on the root survives extraction', () {
       const xml = '<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" '
           'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:pv="http://www.pv.com/pvns/">'

@@ -7,13 +7,15 @@ enum QueueAction { playNow, playNext, addToQueue }
 
 /// Bottom sheet offering Play now / Play next / Add to queue for a track or
 /// a folder. [tracks] is called only after a choice, since collecting a
-/// folder's tracks can take several requests.
+/// folder's tracks can take several requests. With [info], a track's sheet
+/// also offers its details.
 Future<void> showQueueActions(
   BuildContext context, {
   required String title,
   required Future<List<DidlItem>> Function() tracks,
   String playNowLabel = 'Play now',
   Future<void> Function()? playNow,
+  VoidCallback? info,
 }) async {
   final action = await showModalBottomSheet<QueueAction>(
     context: context,
@@ -44,6 +46,15 @@ Future<void> showQueueActions(
             title: const Text('Add to queue'),
             onTap: () => Navigator.pop(context, QueueAction.addToQueue),
           ),
+          if (info != null)
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('Track info'),
+              onTap: () {
+                Navigator.pop(context);
+                info();
+              },
+            ),
         ],
       ),
     ),
