@@ -97,14 +97,27 @@ class RendererOutput implements Output {
       {Duration position = Duration.zero, bool play = true}) async {
     final s = await _ensureSession();
     await s.playQueue(entries, startIndex: index);
-    if (position > Duration.zero) {
-      try {
-        await s.seek(position);
-      } on UpnpActionException {
-        // Some renderers can't seek until playback has started; skip it.
-      }
-    }
+    if (position > Duration.zero) await _seekOncePlaying(s, position);
     if (!play) await s.pause();
+  }
+
+  /// Renderers such as the CXNv2 refuse Seek until the track has started,
+  /// so a queue moved over mid-track would start from the beginning.
+  static Future<void> _seekOncePlaying(RendererQueue s, Duration position) async {
+    try {
+      if (s.current.state != TransportState.playing) {
+        await s.status
+            .firstWhere((st) => st.state == TransportState.playing)
+            .timeout(const Duration(seconds: 10));
+      }
+      await s.seek(position);
+    } on TimeoutException {
+      // Never started; nothing to seek in.
+    } on StateError {
+      // Disposed while waiting.
+    } on UpnpActionException {
+      // Can't seek this track; it plays from the start.
+    }
   }
 
   @override

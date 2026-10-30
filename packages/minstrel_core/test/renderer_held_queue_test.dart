@@ -394,6 +394,34 @@ void main() {
       expect(other.queue[1].resource.uri.toString(), 'http://server/track2.flac');
     });
 
+    test('sends picked-up tracks back with metadata the CXNv2 can read', () {
+      const stored = '<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" '
+          'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/">'
+          '<item><upnp:album>Richter Edition</upnp:album><res duration="0:04:10.000"></res>'
+          '<dc:title>Etude</dc:title><upnp:class>object.item.audioItem.musicTrack</upnp:class></item></DIDL-Lite>';
+      final e = queueEntryFromMetadata(Uri.parse('http://server/08%20Etude.flac'), stored);
+      expect(e.resource.formatLabel, 'FLAC');
+      final res = XmlDocument.parse(e.item.toDidlLite()).findAllElements('res').single;
+      expect(res.innerText, 'http://server/08%20Etude.flac');
+      expect(res.getAttribute('protocolInfo'), 'http-get:*:audio/flac:*');
+      expect(res.getAttribute('duration'), '0:04:10');
+      expect(e.item.album, 'Richter Edition');
+    });
+
+    test('recovers tracks whose metadata the CXNv2 already mangled into the title', () {
+      const inner = '<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" '
+          'xmlns:dc="http://purl.org/dc/elements/1.1/"><item><res duration="0:03:14.000"></res>'
+          '<dc:title>Chapter 1</dc:title><upnp:class xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/">'
+          'object.item.audioItem.musicTrack</upnp:class></item></DIDL-Lite>';
+      final mangled = '<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" '
+          'xmlns:dc="http://purl.org/dc/elements/1.1/"><item><res duration="0:00:00.000"></res>'
+          '<dc:title>${const HtmlEscape(HtmlEscapeMode.element).convert(inner)}</dc:title></item></DIDL-Lite>';
+      final e = queueEntryFromMetadata(Uri.parse('http://server/ch1.mp3'), mangled);
+      expect(e.item.title, 'Chapter 1');
+      expect(e.resource.duration, const Duration(minutes: 3, seconds: 14));
+      expect(e.resource.mimeType, 'audio/mpeg');
+    });
+
     test('short jumps step with Next/Previous', () async {
       await q.playQueue([entry(1), entry(2), entry(3), entry(4)]);
       await settle();

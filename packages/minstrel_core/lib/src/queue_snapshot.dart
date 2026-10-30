@@ -65,6 +65,13 @@ class QueueSnapshot {
 /// trimmed copy: no item id, and a `<res>` with attributes but no URL. The
 /// resource is matched by URL when present, otherwise taken from the first
 /// `<res>`'s attributes.
+///
+/// Such a trimmed copy can't be sent back as is: the CXNv2 doesn't
+/// recognise metadata whose `<res>` lacks a URL or protocolInfo, and stores
+/// the whole document as the title, with no duration; it then also ignores
+/// Pause. So the entry gets a complete `<res>`, with the format guessed from
+/// the file name when the renderer dropped it. Metadata it already mangled
+/// is recovered from the title.
 QueueEntry queueEntryFromMetadata(Uri uri, String metadata) {
   DidlItem? item;
   XmlElement? res;
@@ -78,9 +85,16 @@ QueueEntry queueEntryFromMetadata(Uri uri, String metadata) {
     // Unparseable metadata: fall back to the URL alone.
   }
 
+  // Metadata the CXNv2 already mangled: the original is in the title.
+  final title = item?.title.trim() ?? '';
+  if (title.startsWith('<DIDL-Lite') && title != metadata.trim()) {
+    return queueEntryFromMetadata(uri, title);
+  }
+
+  final protocolInfo = ProtocolInfo.parse(res?.attr('protocolInfo'));
   final resource = DidlResource(
     uri: uri,
-    protocolInfo: ProtocolInfo.parse(res?.attr('protocolInfo')),
+    protocolInfo: protocolInfo ?? _guessProtocolInfo(uri),
     duration: parseUpnpDuration(res?.attr('duration')),
     size: int.tryParse(res?.attr('size') ?? ''),
     bitrate: int.tryParse(res?.attr('bitrate') ?? ''),
@@ -90,6 +104,7 @@ QueueEntry queueEntryFromMetadata(Uri uri, String metadata) {
   );
 
   final i = item;
+  final complete = protocolInfo != null && res != null && res.innerText.trim().isNotEmpty;
   return QueueEntry(
     DidlItem(
       id: i?.id ?? '',
@@ -102,12 +117,47 @@ QueueEntry queueEntryFromMetadata(Uri uri, String metadata) {
       genre: i?.genre,
       date: i?.date,
       albumArt: i?.albumArt,
-      rawXml: i?.rawXml ?? '<item id="" parentID=""><dc:title>${xmlEscape(_titleFromUri(uri))}</dc:title></item>',
+      rawXml: _withResource(
+          i?.rawXml ?? '<item id="" parentID=""><dc:title>${xmlEscape(_titleFromUri(uri))}</dc:title></item>',
+          complete ? null : resource),
       resources: (i?.resources.isNotEmpty ?? false) ? i!.resources : [resource],
       trackNumber: i?.trackNumber,
     ),
     resource,
   );
+}
+
+/// Replaces the `<res>` elements of [itemXml] with [r], if given.
+String _withResource(String itemXml, DidlResource? r) {
+  if (r == null) return itemXml;
+  final d = r.duration;
+  final res = '<res protocolInfo="${xmlEscape(r.protocolInfo.toString())}"'
+      '${d != null && d > Duration.zero ? ' duration="${formatUpnpDuration(d)}"' : ''}'
+      '>${xmlEscape(r.uri.toString())}</res>';
+  final stripped = itemXml.replaceAll(RegExp(r'<res\b[^>]*?(/>|>.*?</res>)', dotAll: true), '');
+  final end = stripped.lastIndexOf('</item>');
+  return end < 0 ? stripped : '${stripped.substring(0, end)}$res${stripped.substring(end)}';
+}
+
+const _mimeByExtension = {
+  'flac': 'audio/flac',
+  'mp3': 'audio/mpeg',
+  'm4a': 'audio/mp4',
+  'aac': 'audio/aac',
+  'wav': 'audio/wav',
+  'aif': 'audio/aiff',
+  'aiff': 'audio/aiff',
+  'ogg': 'audio/ogg',
+  'dsf': 'audio/dsf',
+  'dff': 'audio/dff',
+  'wma': 'audio/wma',
+};
+
+ProtocolInfo _guessProtocolInfo(Uri uri) {
+  final name = uri.pathSegments.where((s) => s.isNotEmpty).lastOrNull ?? '';
+  final dot = name.lastIndexOf('.');
+  final mime = dot < 0 ? null : _mimeByExtension[name.substring(dot + 1).toLowerCase()];
+  return ProtocolInfo.parse('http-get:*:${mime ?? '*'}:*')!;
 }
 
 String _titleFromUri(Uri uri) {
