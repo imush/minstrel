@@ -411,11 +411,12 @@ class OpenHomeBackend implements PlaylistBackend {
 class PlaylistExtensionBackend implements PlaylistBackend {
   final PlaylistExtension list;
   final AVTransport transport;
+  final StreamMagicControl? control;
 
   /// Beyond this many steps, reloading is quicker than stepping.
   static const maxSteps = 8;
 
-  PlaylistExtensionBackend(this.list, this.transport);
+  PlaylistExtensionBackend(this.list, this.transport, {this.control});
 
   @override
   Future<void> prepare() async {
@@ -423,6 +424,16 @@ class PlaylistExtensionBackend implements PlaylistBackend {
       await transport.stop();
     } on Object {
       // Already stopped (701) or idle.
+    }
+    await _selectMediaPlayer();
+  }
+
+  /// Play resumes the selected input, and Spotify Connect switches the unit
+  /// to its own whenever a phone nearby connects to it.
+  Future<void> _selectMediaPlayer() async {
+    final c = control;
+    if (c != null && await c.audioSource() != StreamMagicControl.mediaPlayer) {
+      await c.setAudioSource(StreamMagicControl.mediaPlayer);
     }
   }
 
@@ -449,7 +460,11 @@ class PlaylistExtensionBackend implements PlaylistBackend {
   }
 
   @override
-  Future<void> play() => transport.play();
+  Future<void> play() async {
+    await _selectMediaPlayer();
+    await transport.play();
+  }
+
   @override
   Future<void> pause() => transport.pause();
   @override

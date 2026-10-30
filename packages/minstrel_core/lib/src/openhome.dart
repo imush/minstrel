@@ -163,3 +163,20 @@ class PlaylistExtension extends _ServiceClient {
       (ids) async => parsePlaylistEntries(
           (await call('ReadList', {'aIdList': ids.join(',')}))['aMetaDataList'] ?? ''));
 }
+
+/// Cambridge Audio StreamMagic `UuVolControl`: among much else, the input
+/// the unit plays from. AVTransport Play resumes whichever input is
+/// selected, so a unit last used with Spotify Connect plays Spotify again
+/// unless switched back to its media player.
+class StreamMagicControl extends _ServiceClient {
+  StreamMagicControl(super.soap, super.service);
+
+  static const serviceTypePrefix = 'urn:UuVol-com:service:UuVolControl:';
+
+  /// The input that plays the PlaylistExtension list. The others are
+  /// "Internet radio" and, for Spotify Connect and the like, "Other".
+  static const mediaPlayer = 'Media player';
+
+  Future<String?> audioSource() async => (await call('GetAudioSource'))['RetAudioSourceValue'];
+  Future<void> setAudioSource(String source) => call('SetAudioSource', {'NewAudioSourceValue': source});
+}

@@ -128,6 +128,9 @@ class FakeOpenHome {
 class FakeStreamMagic {
   final list = FakeList();
 
+  /// The selected input; Play plays the list only on 'Media player'.
+  String source = 'Media player';
+
   late final client = MockClient((req) async {
     final soapAction = req.headers['SOAPACTION']!.replaceAll('"', '');
     final type = soapAction.split('#').first;
@@ -160,8 +163,12 @@ class FakeStreamMagic {
         list.remove(int.parse(arg('aId')));
       case 'Play':
         // Observed on a CXNv2: Play from stopped starts at the first entry.
-        if (list.state == 'Stopped') list.current = list.ids.first;
+        if (list.state == 'Stopped') list.current = source == 'Media player' ? list.ids.first : -1;
         list.state = 'Playing';
+      case 'GetAudioSource':
+        out = '<RetAudioSourceValue>$source</RetAudioSourceValue>';
+      case 'SetAudioSource':
+        source = arg('NewAudioSourceValue');
       case 'Stop':
         list.state = 'Stopped';
       case 'Next':
@@ -351,11 +358,20 @@ void main() {
         PlaylistExtensionBackend(
           PlaylistExtension(soap, svc('urn:UuVol-com:service:PlaylistExtension:1')),
           AVTransport(soap, svc('urn:schemas-upnp-org:service:AVTransport:1')),
+          control: StreamMagicControl(soap, svc('urn:UuVol-com:service:UuVolControl:5')),
         ),
         pollInterval: const Duration(milliseconds: 10),
       );
     });
     tearDown(() => q.dispose());
+
+    test('switches back from Spotify Connect to the media player', () async {
+      r.source = 'Other';
+      await q.playQueue([entry(1), entry(2)]);
+      await settle();
+      expect(r.source, 'Media player');
+      expect(r.list.uris[r.list.current], endsWith('track1.flac'));
+    });
 
     test('starts at the requested track and follows by URI', () async {
       await q.playQueue([entry(1), entry(2), entry(3)], startIndex: 1);

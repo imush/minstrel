@@ -38,6 +38,7 @@ class MediaRenderer {
   final OhProduct? ohProduct;
   final OhVolume? ohVolume;
   final PlaylistExtension? playlistExtension;
+  final StreamMagicControl? streamMagic;
   final http.Client _http;
 
   List<ProtocolInfo>? _sinks;
@@ -55,6 +56,7 @@ class MediaRenderer {
     this.ohProduct,
     this.ohVolume,
     this.playlistExtension,
+    this.streamMagic,
   });
 
   /// Builds a renderer from the devices of one description document, or
@@ -98,6 +100,7 @@ class MediaRenderer {
       ohProduct: wrap(find((t) => oh(t, 'Product')), OhProduct.new),
       ohVolume: wrap(find((t) => oh(t, 'Volume')), OhVolume.new),
       playlistExtension: avt == null ? null : wrap(ext, PlaylistExtension.new),
+      streamMagic: wrap(find((t) => t.startsWith(StreamMagicControl.serviceTypePrefix)), StreamMagicControl.new),
     );
   }
 
@@ -150,7 +153,7 @@ class MediaRenderer {
         );
       case QueueStrategy.playlistExtension:
         return RendererHeldQueue(
-          PlaylistExtensionBackend(playlistExtension!, transport!),
+          PlaylistExtensionBackend(playlistExtension!, transport!, control: streamMagic),
           pollInterval: pollInterval,
         );
       case QueueStrategy.avTransport:

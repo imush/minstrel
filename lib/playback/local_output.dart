@@ -78,6 +78,16 @@ class LocalOutput implements Output {
   Future<void> play() async {
     if (_player.processingState == ProcessingState.completed) {
       await _player.seek(Duration.zero, index: 0);
+    } else if (_player.processingState == ProcessingState.idle && _player.audioSources.isNotEmpty) {
+      // Stopped by an error: typically a stream that broke while paused,
+      // such as a home whose proxy gave up during a long outage (driving
+      // home). The player may still count itself as playing, which makes
+      // play() do nothing, so load the queue again where it was.
+      final index = _player.currentIndex ?? 0;
+      final position = _player.position;
+      await _player.pause();
+      await _player.setAudioSources(List.of(_player.audioSources),
+          initialIndex: index, initialPosition: position, preload: false);
     }
     unawaited(_player.play()); // completes only when playback pauses
   }
