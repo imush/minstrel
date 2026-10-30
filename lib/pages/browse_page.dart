@@ -33,10 +33,38 @@ class _BrowsePageState extends State<BrowsePage> {
   bool _done = false;
   Object? _error;
 
+  /// What the list is filtered by; null while the filter field is closed.
+  String? _filter;
+
   @override
   void initState() {
     super.initState();
     _loadMore();
+  }
+
+  void _setFilter(String? text) {
+    setState(() => _filter = text);
+    // The filter covers the whole list, not just the pages seen so far.
+    if (text != null && text.isNotEmpty) unawaited(_loadAll());
+  }
+
+  Future<void> _loadAll() async {
+    while (!_done && _error == null && mounted) {
+      await _loadMore();
+    }
+  }
+
+  List<DidlObject> get _shown {
+    final words = foldForSearch(_filter ?? '').split(' ').where((w) => w.isNotEmpty).toList();
+    if (words.isEmpty) return _objects;
+    return _objects.where((o) {
+      final text = foldForSearch([
+        o.title,
+        if (o is DidlItem) ...[?o.performer, ?o.composer, ?o.album],
+        if (o is DidlContainer) ...[?o.performer, ?o.composer],
+      ].join(' '));
+      return words.every(text.contains);
+    }).toList();
   }
 
   Future<void> _loadMore() async {
@@ -57,9 +85,7 @@ class _BrowsePageState extends State<BrowsePage> {
 
   /// All items in this container, loading any pages not yet fetched.
   Future<List<DidlItem>> _allItems() async {
-    while (!_done && _error == null) {
-      await _loadMore();
-    }
+    await _loadAll();
     return _objects.whereType<DidlItem>().where((i) => i.isAudio).toList();
   }
 
@@ -94,12 +120,24 @@ class _BrowsePageState extends State<BrowsePage> {
   Widget build(BuildContext context) {
     final items = _objects.whereType<DidlItem>().where((i) => i.isAudio).toList();
     final hasItems = items.isNotEmpty;
+    final shown = _shown;
+    final filtering = _filter != null;
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.title),
+        title: filtering
+            ? TextField(
+                autofocus: true,
+                decoration: InputDecoration(hintText: 'Filter ${widget.title}', border: InputBorder.none),
+                onChanged: _setFilter,
+              )
+            : Text(widget.title),
         actions: [
+          if (filtering)
+            IconButton(tooltip: 'Close filter', icon: const Icon(Icons.close), onPressed: () => _setFilter(null))
+          else if (_objects.length > 12 || !_done)
+            IconButton(tooltip: 'Filter', icon: const Icon(Icons.search), onPressed: () => _setFilter('')),
           const OutputButton(),
-          if (hasItems) ...[
+          if (hasItems && !filtering) ...[
             IconButton(
               tooltip: 'Play all',
               icon: const Icon(Icons.play_arrow),
@@ -125,15 +163,15 @@ class _BrowsePageState extends State<BrowsePage> {
                 return false;
               },
               child: ListView.builder(
-                itemCount: _objects.length + (_done ? 0 : 1),
+                itemCount: shown.length + (_done ? 0 : 1),
                 itemBuilder: (context, i) {
-                  if (i >= _objects.length) {
+                  if (i >= shown.length) {
                     return const Padding(
                       padding: EdgeInsets.all(24),
                       child: Center(child: CircularProgressIndicator()),
                     );
                   }
-                  return switch (_objects[i]) {
+                  return switch (shown[i]) {
                     DidlContainer c => _ContainerTile(
                         container: c,
                         onMore: () => showQueueActions(context,
@@ -164,6 +202,44 @@ class _BrowsePageState extends State<BrowsePage> {
     );
   }
 }
+
+/// Lower case without accents, so "beyonce" finds "Beyoncé" and "dvorak"
+/// finds "Dvořák".
+String foldForSearch(String s) {
+  final lower = s.toLowerCase();
+  final out = StringBuffer();
+  for (final r in lower.runes) {
+    final c = String.fromCharCode(r);
+    out.write(_folded[c] ?? c);
+  }
+  return out.toString();
+}
+
+const _accents = {
+  'a': 'àáâãäåāăą',
+  'c': 'çćčĉċ',
+  'd': 'ďđ',
+  'e': 'èéêëēĕėęě',
+  'g': 'ğĝġģ',
+  'i': 'ìíîïĩīĭįı',
+  'l': 'ĺļľłŀ',
+  'n': 'ñńņňŉ',
+  'o': 'òóôõöøōŏő',
+  'r': 'ŕŗř',
+  's': 'śŝşšș',
+  't': 'ţťŧț',
+  'u': 'ùúûüũūŭůűų',
+  'y': 'ýÿŷ',
+  'z': 'źżž',
+  'ae': 'æ',
+  'oe': 'œ',
+  'ss': 'ß',
+};
+
+final _folded = {
+  for (final e in _accents.entries)
+    for (final c in e.value.split('')) c: e.key,
+};
 
 class _ContainerTile extends StatelessWidget {
   final DidlContainer container;
