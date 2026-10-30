@@ -1,51 +1,49 @@
 import 'dart:async';
 
-import 'package:audio_session/audio_session.dart';
 import 'package:just_audio/just_audio.dart';
 
-/// Whether the app must stay awake: the renderer doesn't yet hold every
-/// remaining track, so at least one handover is still to come.
-/// [tracksAhead] is how many tracks after the current one the renderer has.
-bool keepAliveNeeded({required int queueLength, required int index, required int tracksAhead}) =>
-    index >= 0 && queueLength - 1 - index > tracksAhead;
-
-/// Keeps the app running on iOS while it drives a renderer that can't hold
-/// the queue itself.
+/// Keeps Minstrel the phone's audio app on iOS while a renderer plays.
 ///
-/// iOS suspends background apps that aren't playing audio, and a suspended
-/// app can't hand the renderer its next track. Looping silence keeps the
-/// app running. It mixes with other apps' audio, so it never stops or ducks
-/// a podcast or navigation prompt, and it runs only while a queue is
-/// playing: [linger] covers the gap between tracks, not pauses.
+/// iOS shows lock screen and Control Center controls only for the app
+/// playing audio, and suspends background apps that aren't. Casting plays
+/// nothing on the phone, so without this the lock screen has no controls,
+/// and a suspended app can't hand the renderer its next track. Looping
+/// silence in the normal music session fixes both. Like any music app it
+/// stops other apps' audio when casting starts; an app that then takes the
+/// audio back takes the lock screen too, and the renderer plays on.
+///
+/// The silence plays while the renderer does and pauses when it pauses, so
+/// the lock screen keeps the controls to resume it.
 class KeepAlive {
-  static const linger = Duration(seconds: 20);
-
   AudioPlayer? _player;
-  Timer? _stopTimer;
+
+  /// What the renderer was last doing. The silence follows its changes
+  /// only, so after another app interrupts it, it doesn't take the audio
+  /// back until the renderer is paused and played again.
+  bool _playing = false;
 
   bool get running => _player != null;
 
-  /// [needed]: a phone-held renderer queue is active. [playing]: it's
-  /// currently playing (or buffering).
-  void update({required bool needed, required bool playing}) {
-    if (!needed) {
+  /// [active]: a renderer queue is loaded. [playing]: it's playing (or
+  /// buffering).
+  void update({required bool active, required bool playing}) {
+    if (!active) {
       _stop();
-    } else if (playing) {
-      _stopTimer?.cancel();
-      _stopTimer = null;
-      if (!running) unawaited(_start());
-    } else if (running) {
-      _stopTimer ??= Timer(linger, _stop);
+    } else if (!running) {
+      _playing = playing;
+      unawaited(_start(playing));
+    } else if (playing != _playing) {
+      _playing = playing;
+      unawaited(playing ? _player!.play() : _player!.pause());
     }
   }
 
-  Future<void> _start() async {
+  Future<void> _start(bool playing) async {
     final p = _player = AudioPlayer();
     try {
-      await _setMixing(true);
       await p.setLoopMode(LoopMode.one);
       await p.setAudioSource(AudioSource.asset('assets/silence.wav'));
-      unawaited(p.play());
+      if (playing) unawaited(p.play());
     } on Object {
       // Without it, the queue still catches up when the app is reopened.
       _stop();
@@ -53,22 +51,8 @@ class KeepAlive {
   }
 
   void _stop() {
-    _stopTimer?.cancel();
-    _stopTimer = null;
     final p = _player;
     _player = null;
-    if (p == null) return;
-    p.dispose();
-    unawaited(_setMixing(false));
-  }
-
-  /// Switches the shared audio session between mixable (for the silent
-  /// loop) and the normal music session used for local playback.
-  static Future<void> _setMixing(bool mix) async {
-    final session = await AudioSession.instance;
-    await session.configure(mix
-        ? const AudioSessionConfiguration.music().copyWith(
-            avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.mixWithOthers)
-        : const AudioSessionConfiguration.music());
+    p?.dispose();
   }
 }

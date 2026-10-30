@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:minstrel_core/minstrel_core.dart';
 import 'package:rxdart/rxdart.dart';
 
@@ -15,7 +17,9 @@ class RendererOutput implements Output {
   Timer? _tick;
   DateTime _statusAt = DateTime.now();
 
-  RendererOutput(this.renderer);
+  RendererOutput(this.renderer) {
+    unawaited(readVolume());
+  }
 
   @override
   String get id => renderer.udn;
@@ -142,8 +146,67 @@ class RendererOutput implements Output {
   @override
   Future<void> skipTo(int index) async => _session?.skipTo(index);
 
-  Future<int?> volume() => renderer.volume();
-  Future<void> setVolume(int v) => renderer.setVolume(v);
+  /// The renderer's volume, 0 to 100; null until read, or if it has no
+  /// volume control. The Now Playing slider and, on Android, the side
+  /// buttons both change it. Not disposed with the output: listeners may
+  /// still be detaching.
+  final volume = ValueNotifier<int?>(null);
+  int? _volumeToSend;
+  bool _sendingVolume = false;
+
+  Future<void> readVolume() async {
+    try {
+      final v = await renderer.volume();
+      // A change being sent is newer than what the renderer reports.
+      if (v != null && !_sendingVolume) volume.value = v.clamp(0, 100);
+    } on Object {
+      // No volume control; the slider stays hidden.
+    }
+  }
+
+  /// Sets the volume. While one request is out, newer values replace each
+  /// other, so a quick run of changes sends only the last.
+  void setVolume(int v) {
+    v = v.clamp(0, 100);
+    if (v == volume.value) return;
+    volume.value = v;
+    _volumeToSend = v;
+    if (!_sendingVolume) unawaited(_sendVolume());
+  }
+
+  Future<void> _sendVolume() async {
+    _sendingVolume = true;
+    try {
+      while (_volumeToSend != null) {
+        final v = _volumeToSend!;
+        _volumeToSend = null;
+        try {
+          await renderer.setVolume(v);
+        } on Object {
+          // Unreachable for now; the next change tries again.
+        }
+      }
+    } finally {
+      _sendingVolume = false;
+    }
+  }
+
+  /// One press of a volume button: a sixteenth of the slider, as for the
+  /// phone's own volume, so steps follow the slider's curve.
+  void stepVolume(int direction) {
+    final v = volume.value;
+    if (v == null) return;
+    var next = sliderToVolume((volumeToSlider(v) + direction / 16).clamp(0, 1));
+    // Near zero the curve is flat; still move.
+    if (next == v) next = v + direction.sign;
+    setVolume(next);
+  }
+
+  /// Amplifiers are usually loud enough at 10 to 30, so the slider follows
+  /// a curve: 20 sits near its middle-left instead of a fifth of the way
+  /// along, giving the usual levels most of its length.
+  static double volumeToSlider(int volume) => math.sqrt(volume.clamp(0, 100) / 100);
+  static int sliderToVolume(double slider) => (slider * slider * 100).round();
 
   @override
   Future<void> dispose() async {

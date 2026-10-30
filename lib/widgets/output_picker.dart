@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 
 import '../app_services.dart';
@@ -20,7 +18,7 @@ Future<void> showOutputPicker(BuildContext context) async {
         final options = [
           ('local', 'This device', Icons.smartphone, null),
           for (final r in app.registry.renderers)
-            (r.udn, r.name, Icons.speaker, _queueNote(r.holdsQueue, app.player.keepAliveEnabled)),
+            (r.udn, r.name, Icons.speaker, r.holdsQueue ? 'Keeps playing the queue on its own' : null),
         ];
         return SafeArea(
           child: Column(
@@ -48,13 +46,4 @@ Future<void> showOutputPicker(BuildContext context) async {
       },
     ),
   );
-}
-
-/// Whether the renderer can carry on through the queue without the phone.
-/// Only worth saying on iOS, where a phone-held queue stops advancing once
-/// the app is suspended; Android keeps the app running while it plays.
-String? _queueNote(bool holdsQueue, bool keepAlive) {
-  if (holdsQueue) return 'Keeps playing the queue on its own';
-  if (Platform.isIOS && !keepAlive) return 'Keep Minstrel open to play past the next track';
-  return null;
 }

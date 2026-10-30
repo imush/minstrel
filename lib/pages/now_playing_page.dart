@@ -181,6 +181,7 @@ class _Controls extends StatelessWidget {
   }
 }
 
+/// A network player's volume, kept in step with the side buttons.
 class _Volume extends StatefulWidget {
   final RendererOutput output;
 
@@ -190,40 +191,32 @@ class _Volume extends StatefulWidget {
   State<_Volume> createState() => _VolumeState();
 }
 
-/// A network player's volume, 0 to 100. Amplifiers are usually loud
-/// enough at 10 to 30, so the slider follows a curve: 20 sits near its
-/// middle-left instead of a fifth of the way along, giving the usual levels
-/// most of its length.
 class _VolumeState extends State<_Volume> {
-  double? _volume;
-
-  static double _toSlider(double volume) => math.sqrt(volume.clamp(0, 100) / 100);
-  static int _toVolume(double slider) => (slider * slider * 100).round();
-
   @override
   void initState() {
     super.initState();
-    widget.output.volume().then((v) {
-      if (mounted && v != null) setState(() => _volume = v.toDouble());
-    }, onError: (_) {});
+    // It may have been changed from elsewhere since it was last read.
+    unawaited(widget.output.readVolume());
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (_volume == null) return const SizedBox.shrink();
-    return Row(children: [
-      const Icon(Icons.volume_down),
-      Expanded(
-        child: Slider(
-          value: _toSlider(_volume!),
-          onChanged: (v) => setState(() => _volume = _toVolume(v).toDouble()),
-          onChangeEnd: (v) => widget.output.setVolume(_toVolume(v)),
-        ),
-      ),
-      const Icon(Icons.volume_up),
-      SizedBox(width: 32, child: Text('${_volume!.round()}', textAlign: TextAlign.end)),
-    ]);
-  }
+  Widget build(BuildContext context) => ValueListenableBuilder(
+        valueListenable: widget.output.volume,
+        builder: (context, volume, _) {
+          if (volume == null) return const SizedBox.shrink();
+          return Row(children: [
+            const Icon(Icons.volume_down),
+            Expanded(
+              child: Slider(
+                value: RendererOutput.volumeToSlider(volume),
+                onChanged: (v) => widget.output.setVolume(RendererOutput.sliderToVolume(v)),
+              ),
+            ),
+            const Icon(Icons.volume_up),
+            SizedBox(width: 32, child: Text('$volume', textAlign: TextAlign.end)),
+          ]);
+        },
+      );
 }
 
 /// The phone's media volume, kept in step with the side buttons.

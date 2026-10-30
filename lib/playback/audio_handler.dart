@@ -12,6 +12,7 @@ import 'keep_alive.dart';
 import 'local_output.dart';
 import 'output.dart';
 import 'renderer_output.dart';
+import 'system_volume.dart';
 
 /// The single place playback is controlled from: the app UI, the lock
 /// screen and notification, headset buttons and (later) Android Auto and
@@ -24,12 +25,9 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
   late final ValueNotifier<Output> outputListenable = ValueNotifier(_output);
   StreamSubscription<OutputState>? _sub;
 
-  /// iOS only: holds the app awake while it feeds a renderer track by track.
+  /// iOS only: keeps the lock screen controls and the app running while a
+  /// renderer plays.
   final KeepAlive? _keepAlive = Platform.isIOS ? KeepAlive() : null;
-
-  /// User setting; when off, a phone-held renderer queue pauses its
-  /// handovers while iOS has the app suspended and catches up on reopening.
-  bool keepAliveEnabled = true;
 
   List<QueueEntry> _entries = const [];
   QualityPreference preference = QualityPreference.best;
@@ -372,16 +370,95 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
 
   void _listen() {
     _sub = _output.states.listen(_publish);
+    _followVolume();
+  }
+
+  VoidCallback? _unfollowVolume;
+
+  /// While a renderer plays, the side buttons change its volume, not the
+  /// phone's.
+  void _followVolume() {
+    _unfollowVolume?.call();
+    _unfollowVolume = null;
+    if (Platform.isIOS) {
+      unawaited(_followVolumeIos(_output));
+    } else if (Platform.isAndroid) {
+      _followVolumeAndroid(_output);
+    }
+  }
+
+  /// Android has a remote volume for this: the system's volume panel and
+  /// the side buttons then show and change the renderer's volume.
+  void _followVolumeAndroid(Output out) {
+    if (out is! RendererOutput) {
+      androidPlaybackInfo.add(LocalAndroidPlaybackInfo());
+      return;
+    }
+    void update() {
+      final v = out.volume.value;
+      androidPlaybackInfo.add(v == null
+          ? LocalAndroidPlaybackInfo()
+          : RemoteAndroidPlaybackInfo(
+              volumeControlType: AndroidVolumeControlType.absolute, maxVolume: 100, volume: v));
+    }
+
+    out.volume.addListener(update);
+    _unfollowVolume = () => out.volume.removeListener(update);
+    update();
+  }
+
+  /// The phone's volume from before a renderer took over, put back when
+  /// playback returns to the phone.
+  double? _phoneVolume;
+
+  /// iOS has no remote volume. Instead, while a renderer plays, the phone's
+  /// volume stands for the renderer's, as in mConnect and foobar2000: the
+  /// side buttons, Control Center and the lock screen move it, and Minstrel
+  /// passes it on; changes on the renderer's side move it back. All the
+  /// phone plays then is silence (see [KeepAlive]), so its own level
+  /// doesn't matter.
+  Future<void> _followVolumeIos(Output out) async {
+    if (out is! RendererOutput) {
+      final v = _phoneVolume;
+      _phoneVolume = null;
+      if (v != null) await SystemVolume.set(v);
+      return;
+    }
+    _phoneVolume ??= await SystemVolume.get();
+    if (_output != out) return;
+    var fromPhone = false;
+    void toPhone() {
+      final v = out.volume.value;
+      if (v != null && !fromPhone) unawaited(SystemVolume.set(RendererOutput.volumeToSlider(v)));
+    }
+
+    final sub = SystemVolume.changes.listen((v) {
+      fromPhone = true;
+      out.setVolume(RendererOutput.sliderToVolume(v));
+      fromPhone = false;
+    });
+    out.volume.addListener(toPhone);
+    _unfollowVolume = () {
+      out.volume.removeListener(toPhone);
+      unawaited(sub.cancel());
+    };
+    toPhone();
+  }
+
+  @override
+  Future<void> androidSetRemoteVolume(int volumeIndex) async {
+    if (_output case final RendererOutput out) out.setVolume(volumeIndex);
+  }
+
+  @override
+  Future<void> androidAdjustRemoteVolume(AndroidVolumeDirection direction) async {
+    if (_output case final RendererOutput out) out.stepVolume(direction.index);
   }
 
   void _publish(OutputState s) {
     final out = _output;
     _keepAlive?.update(
-      needed: keepAliveEnabled &&
-          out is RendererOutput &&
-          s.error == null &&
-          keepAliveNeeded(
-              queueLength: _entries.length, index: s.index, tracksAhead: out.tracksAhead),
+      active: out is RendererOutput && s.error == null && s.index >= 0,
       playing: s.playing || s.buffering,
     );
     final index = s.index >= 0 ? s.index : _pendingIndex;

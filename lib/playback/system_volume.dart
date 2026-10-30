@@ -25,7 +25,8 @@ class SystemVolume {
     }
   }
 
-  /// Changes made outside the app, such as with the side buttons.
-  static Stream<double> get changes =>
+  /// Changes made outside the app, such as with the side buttons. One
+  /// stream for every listener: the platform side has room for only one.
+  static final Stream<double> changes =
       _events.receiveBroadcastStream().map((v) => (v as num).toDouble()).handleError((_) {});
 }

@@ -34,7 +34,6 @@ class AppServices {
   static const _manualKey = 'manualDevices';
   static const _rememberedKey = 'rememberedDevices';
   static const _qualityKey = 'quality';
-  static const _keepAliveKey = 'iosKeepAlive';
   static const _compressionKey = 'awayCompression';
   static const _multicast = MethodChannel('org.minstrelplayer/multicast');
 
@@ -64,7 +63,6 @@ class AppServices {
             .where((q) => q.name == prefs.getString(_qualityKey))
             .firstOrNull ??
         QualityPreference.best;
-    player.keepAliveEnabled = prefs.getBool(_keepAliveKey) ?? true;
     final registry = DeviceRegistry(client)
       ..remember([for (final l in prefs.getStringList(_rememberedKey) ?? const <String>[]) Uri.parse(l)])
       ..onRemembered = (locations) =>
@@ -192,11 +190,6 @@ class AppServices {
     } else {
       await prefs.setString(_compressionKey, profile);
     }
-  }
-
-  Future<void> setKeepAlive(bool on) async {
-    player.keepAliveEnabled = on;
-    await prefs.setBool(_keepAliveKey, on);
   }
 
   List<String> get manualDevices => prefs.getStringList(_manualKey) ?? const [];
