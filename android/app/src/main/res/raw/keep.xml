@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Resources found by name at run time, which release builds' resource
+     shrinking would otherwise remove: audio_service looks up the
+     notification icon and its button icons with getIdentifier, and Android
+     refuses a notification whose small icon is missing, so playback
+     crashed (Play build 1.0.1 (9)). -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_minstrel,@drawable/audio_service_*,@mipmap/ic_launcher" />
