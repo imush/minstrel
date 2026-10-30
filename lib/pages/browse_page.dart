@@ -29,7 +29,10 @@ class _BrowsePageState extends State<BrowsePage> {
 
   final _objects = <DidlObject>[];
   int _total = 0;
-  bool _loading = false;
+
+  /// The page being fetched, which callers wait for rather than start
+  /// another.
+  Future<void>? _loading;
   bool _done = false;
   Object? _error;
 
@@ -67,9 +70,17 @@ class _BrowsePageState extends State<BrowsePage> {
     }).toList();
   }
 
-  Future<void> _loadMore() async {
-    if (_loading || _done) return;
-    setState(() => _loading = true);
+  /// Fetches the next page. While one is on its way this returns it, so
+  /// [_loadAll] waits for it instead of spinning.
+  Future<void> _loadMore() {
+    if (_done) return Future.value();
+    return _loading ??= _fetchPage().whenComplete(() {
+      _loading = null;
+      if (mounted) setState(() {});
+    });
+  }
+
+  Future<void> _fetchPage() async {
     try {
       final page = await widget.server.contentDirectory
           .browse(widget.containerId, start: _objects.length, count: _pageSize);
@@ -80,7 +91,6 @@ class _BrowsePageState extends State<BrowsePage> {
     } on Object catch (e) {
       _error = e;
     }
-    if (mounted) setState(() => _loading = false);
   }
 
   /// All items in this container, loading any pages not yet fetched.
