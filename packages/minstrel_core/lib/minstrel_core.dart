@@ -16,6 +16,7 @@ export 'src/renderer_held_queue.dart';
 export 'src/renderer_queue.dart';
 export 'src/resource_selector.dart';
 export 'src/services.dart';
+export 'src/sharing.dart';
 export 'src/soap.dart';
 export 'src/ssdp.dart';
 export 'src/upnp_time.dart';

@@ -9,6 +9,7 @@ import '../widgets/mini_player.dart';
 import 'add_home_page.dart';
 import 'browse_page.dart';
 import 'settings_page.dart';
+import 'sharing_page.dart';
 
 /// Home: the media servers found on the network or added by URL.
 class ServersPage extends StatefulWidget {
@@ -294,6 +295,12 @@ class _HomeTile extends StatelessWidget {
       trailing: PopupMenuButton<void>(
         tooltip: 'More',
         itemBuilder: (context) => [
+          if (homes.canInvite(home))
+            PopupMenuItem(
+              onTap: () => Navigator.push(
+                  context, MaterialPageRoute<void>(builder: (_) => SharingPage(home: home))),
+              child: const Text('Invite someone'),
+            ),
           PopupMenuItem(
             onTap: () => _rename(context, home),
             child: const Text('Rename'),

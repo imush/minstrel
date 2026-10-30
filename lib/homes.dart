@@ -45,12 +45,23 @@ class Homes extends ChangeNotifier {
 
   HomeStatus status(Home home) => proxy.status(home.id);
 
+  final _canInvite = <String>{};
+
+  /// Whether this device may invite others to [home], as of its last
+  /// answer.
+  bool canInvite(Home home) => _canInvite.contains(home.id);
+
   /// Reconnects to every home and reloads its server list.
   Future<void> refreshAll() => Future.wait(_homes.map(refresh));
 
   Future<void> refresh(Home home) async {
     try {
       final info = await proxy.info(home.id);
+      if (info.canInvite) {
+        _canInvite.add(home.id);
+      } else {
+        _canInvite.remove(home.id);
+      }
       // Follow changes made on the launchpad's console: its addresses (direct
       // and through a satellite), and
       // its name unless this device named the home itself.

@@ -131,6 +131,25 @@ class HomeProxy {
     return info;
   }
 
+  /// A launchpad API request: [body] is sent as JSON, and the answer
+  /// decoded from JSON (null when empty). A refusal throws an
+  /// [HttpException] with the launchpad's explanation.
+  Future<Object?> api(String id, String method, String path, [Object? body]) async {
+    final link = _links[id];
+    if (link == null) throw const LaunchpadException(LaunchpadProblem.notPaired);
+    final resp = await link.send(
+      method,
+      path,
+      body == null ? const {} : {'content-type': ['application/json']},
+      body == null ? null : utf8.encode(jsonEncode(body)),
+      base(id),
+    );
+    final text = await utf8.decodeStream(resp);
+    if (resp.statusCode == 401) throw const LaunchpadException(LaunchpadProblem.notPaired);
+    if (resp.statusCode >= 300) throw HttpException(text.trim().isEmpty ? 'HTTP ${resp.statusCode}' : text.trim());
+    return text.isEmpty ? null : jsonDecode(text);
+  }
+
   /// Whether home [id]'s launchpad can compress, as of its last answer.
   bool canCompress(String id) => _links[id]?.transcode.isNotEmpty ?? false;
 

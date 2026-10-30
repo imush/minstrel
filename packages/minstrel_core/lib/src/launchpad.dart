@@ -170,8 +170,11 @@ class LaunchpadInfo {
   /// empty without ffmpeg there.
   final List<String> transcode;
 
+  /// Whether this device may invite others to the home (see sharing.dart).
+  final bool canInvite;
+
   const LaunchpadInfo(this.name, this.version, this.servers,
-      [this.addresses = const [], this.relays, this.transcode = const []]);
+      [this.addresses = const [], this.relays, this.transcode = const [], this.canInvite = false]);
 
   static LaunchpadInfo fromJson(Map<String, dynamic> j) => LaunchpadInfo(
     j['name'] as String? ?? '',
@@ -188,6 +191,7 @@ class LaunchpadInfo {
     [...?(j['addresses'] as List?)?.cast<String>()],
     (j['relays'] as List?)?.cast<String>().toList(),
     [...?(j['transcode'] as List?)?.cast<String>()],
+    (j['device'] as Map?)?['share'] == true,
   );
 }
 
