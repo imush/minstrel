@@ -79,7 +79,10 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<List<MediaItem>> getChildren(String parentMediaId, [Map<String, dynamic>? options]) async {
     final car = await _car.future;
     try {
-      if (parentMediaId == AudioService.browsableRootId) return car.roots().map(carMediaItem).toList();
+      if (parentMediaId == AudioService.browsableRootId) {
+        _republish();
+        return car.roots().map(carMediaItem).toList();
+      }
       if (parentMediaId == AudioService.recentRootId) {
         // Android's "resume playback" suggestion: the current track.
         final item = mediaItem.value;
@@ -92,6 +95,16 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
       debugPrint('car: browsing $parentMediaId failed: $e');
       return const [];
     }
+  }
+
+  /// Sends the queue, track and state to the media session again. Android
+  /// may have recreated the playback service since they last changed, and a
+  /// new session starts out empty: the car would show nothing playing. The
+  /// car asks for the top of its menus whenever it connects.
+  void _republish() {
+    queue.add(queue.value);
+    if (mediaItem.value case final item?) mediaItem.add(item);
+    _publish(_output.state);
   }
 
   @override

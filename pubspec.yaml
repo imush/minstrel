@@ -105,3 +105,7 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+dependency_overrides:
+  audio_service:
+    path: packages/audio_service
