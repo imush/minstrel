@@ -9,6 +9,7 @@ import '../widgets/mini_player.dart';
 import '../widgets/output_button.dart';
 import '../widgets/queue_actions.dart';
 import '../widgets/track_info.dart';
+import 'search_page.dart';
 
 /// One level of a server's browse tree. MinimServer trees go many levels
 /// deep (Composer > name > Work > Performer > ...), so this page simply
@@ -102,29 +103,12 @@ class _BrowsePageState extends State<BrowsePage> {
 
   Future<void> _play(DidlItem? from) async {
     final items = await _allItems();
-    if (items.isEmpty) return;
+    if (items.isEmpty || !mounted) return;
     final start = from == null ? 0 : items.indexWhere((i) => i.id == from.id);
-    final services = AppServices.instance;
-    final player = services.player;
-    try {
-      await player.playItems(items, start < 0 ? 0 : start);
-    } on Object catch (e) {
-      if (!mounted || !isConnectionError(e)) rethrow;
-      // Typically a player at home, chosen before leaving the house.
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Can\'t reach ${player.output.name}. Choose another output to play here.'),
-      ));
-      return;
-    }
+    if (!await playTracks(context, items, start < 0 ? 0 : start)) return;
     // Shown in the car's Recent tab.
-    unawaited(services.car.remember(widget.server.udn, widget.containerId, widget.title, items.first.albumArt));
-    if (!mounted) return;
-    if (player.skipped.isNotEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('${player.skipped.length} track(s) skipped: '
-            '${player.output.name} can\'t play them'),
-      ));
-    }
+    unawaited(AppServices.instance.car
+        .remember(widget.server.udn, widget.containerId, widget.title, items.first.albumArt));
   }
 
   @override
@@ -146,7 +130,8 @@ class _BrowsePageState extends State<BrowsePage> {
           if (filtering)
             IconButton(tooltip: 'Close filter', icon: const Icon(Icons.close), onPressed: () => _setFilter(null))
           else if (_objects.length > 12 || !_done)
-            IconButton(tooltip: 'Filter', icon: const Icon(Icons.search), onPressed: () => _setFilter('')),
+            IconButton(tooltip: 'Filter', icon: const Icon(Icons.filter_list), onPressed: () => _setFilter('')),
+          if (!filtering) _SearchButton(server: widget.server),
           const OutputButton(),
           if (hasItems && !filtering) ...[
             IconButton(
@@ -183,7 +168,7 @@ class _BrowsePageState extends State<BrowsePage> {
                     );
                   }
                   return switch (shown[i]) {
-                    DidlContainer c => _ContainerTile(
+                    DidlContainer c => ContainerTile(
                         container: c,
                         onMore: () => showQueueActions(context,
                             title: c.title,
@@ -196,7 +181,7 @@ class _BrowsePageState extends State<BrowsePage> {
                           ),
                         ),
                       ),
-                    DidlItem item => _ItemTile(
+                    DidlItem item => ItemTile(
                         item: item,
                         onTap: () => _play(item),
                         onMore: () => showQueueActions(context,
@@ -215,50 +200,66 @@ class _BrowsePageState extends State<BrowsePage> {
   }
 }
 
-/// Lower case without accents, so "beyonce" finds "Beyoncé" and "dvorak"
-/// finds "Dvořák".
-String foldForSearch(String s) {
-  final lower = s.toLowerCase();
-  final out = StringBuffer();
-  for (final r in lower.runes) {
-    final c = String.fromCharCode(r);
-    out.write(_folded[c] ?? c);
+/// Plays [items] from [start], reporting a player out of reach or tracks it
+/// can't play. Returns whether playback started.
+Future<bool> playTracks(BuildContext context, List<DidlItem> items, int start) async {
+  final player = AppServices.instance.player;
+  final messenger = ScaffoldMessenger.of(context);
+  try {
+    await player.playItems(items, start);
+  } on Object catch (e) {
+    if (!isConnectionError(e)) rethrow;
+    // Typically a player at home, chosen before leaving the house.
+    messenger.showSnackBar(SnackBar(
+      content: Text('Can\'t reach ${player.output.name}. Choose another output to play here.'),
+    ));
+    return false;
   }
-  return out.toString();
+  if (player.skipped.isNotEmpty) {
+    messenger.showSnackBar(SnackBar(
+      content: Text('${player.skipped.length} track(s) skipped: ${player.output.name} can\'t play them'),
+    ));
+  }
+  return true;
 }
 
-const _accents = {
-  'a': 'àáâãäåāăą',
-  'c': 'çćčĉċ',
-  'd': 'ďđ',
-  'e': 'èéêëēĕėęě',
-  'g': 'ğĝġģ',
-  'i': 'ìíîïĩīĭįı',
-  'l': 'ĺļľłŀ',
-  'n': 'ñńņňŉ',
-  'o': 'òóôõöøōŏő',
-  'r': 'ŕŗř',
-  's': 'śŝşšș',
-  't': 'ţťŧț',
-  'u': 'ùúûüũūŭůűų',
-  'y': 'ýÿŷ',
-  'z': 'źżž',
-  'ae': 'æ',
-  'oe': 'œ',
-  'ss': 'ß',
-};
+/// Opens a search of the whole library, on servers that can search.
+class _SearchButton extends StatefulWidget {
+  final MediaServer server;
 
-final _folded = {
-  for (final e in _accents.entries)
-    for (final c in e.value.split('')) c: e.key,
-};
+  const _SearchButton({required this.server});
 
-class _ContainerTile extends StatelessWidget {
+  @override
+  State<_SearchButton> createState() => _SearchButtonState();
+}
+
+class _SearchButtonState extends State<_SearchButton> {
+  late final _supported = widget.server.search.supported.catchError((_) => false);
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder(
+        future: _supported,
+        builder: (context, snap) => snap.data != true
+            ? const SizedBox.shrink()
+            : IconButton(
+                tooltip: 'Search ${widget.server.name}',
+                icon: const Icon(Icons.search),
+                onPressed: () => Navigator.push(context,
+                    MaterialPageRoute<void>(builder: (_) => SearchPage(server: widget.server))),
+              ),
+      );
+}
+
+class ContainerTile extends StatelessWidget {
   final DidlContainer container;
   final VoidCallback onTap;
   final VoidCallback onMore;
 
-  const _ContainerTile({required this.container, required this.onTap, required this.onMore});
+  /// Shown when the container has no artwork.
+  final IconData placeholder;
+
+  const ContainerTile(
+      {super.key, required this.container, required this.onTap, required this.onMore, this.placeholder = Icons.folder});
 
   @override
   Widget build(BuildContext context) {
@@ -268,7 +269,7 @@ class _ContainerTile extends StatelessWidget {
       if (container.date != null) container.date!.split('-').first,
     ].join(' · ');
     return ListTile(
-      leading: CoverArt(container.albumArt, placeholder: Icons.folder),
+      leading: CoverArt(container.albumArt, placeholder: placeholder),
       title: Text(container.title),
       subtitle: subtitle.isEmpty ? null : Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -281,12 +282,12 @@ class _ContainerTile extends StatelessWidget {
   }
 }
 
-class _ItemTile extends StatelessWidget {
+class ItemTile extends StatelessWidget {
   final DidlItem item;
   final VoidCallback onTap;
   final VoidCallback onMore;
 
-  const _ItemTile({required this.item, required this.onTap, required this.onMore});
+  const ItemTile({super.key, required this.item, required this.onTap, required this.onMore});
 
   @override
   Widget build(BuildContext context) {

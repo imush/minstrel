@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:http/http.dart' as http;
 
 import 'device.dart';
+import 'library_search.dart';
 import 'renderer.dart';
 import 'services.dart';
 import 'soap.dart';
@@ -18,6 +19,9 @@ class MediaServer {
   final String? homeId;
 
   MediaServer(this.device, this.contentDirectory, {this.via, this.homeId});
+
+  /// Searches the whole library, where the server supports it.
+  late final search = LibrarySearch(contentDirectory);
 
   String get udn => device.udn;
   String get name => device.friendlyName;

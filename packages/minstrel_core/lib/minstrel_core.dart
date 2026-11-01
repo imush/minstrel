@@ -7,6 +7,7 @@ export 'src/didl.dart';
 export 'src/discovery.dart';
 export 'src/home_proxy.dart';
 export 'src/launchpad.dart';
+export 'src/library_search.dart';
 export 'src/protocol_info.dart';
 export 'src/queue_snapshot.dart';
 export 'src/avtransport_queue.dart';
