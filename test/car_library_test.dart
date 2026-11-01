@@ -18,6 +18,7 @@ List<DidlObject> didl(List<String> parts) => parseDidlLite(wrapDidlLite(parts.jo
 class FakeSource implements CarSource {
   final Map<String, List<DidlObject>> tree;
   final searches = <String>[];
+  List<DidlObject> artistHits = const [];
   List<DidlObject> albumHits = const [];
   List<DidlObject> trackHits = const [];
 
@@ -40,10 +41,13 @@ class FakeSource implements CarSource {
   }
 
   @override
-  Future<BrowseResult> search(String udn, String criteria, {int count = 50}) async {
-    searches.add(criteria);
-    final hits = criteria.contains('container.album') ? albumHits : trackHits;
-    return BrowseResult(hits, hits.length, 1);
+  Future<LibrarySearchResult> search(String udn, String query) async {
+    searches.add(query);
+    return LibrarySearchResult(
+      artists: artistHits.whereType<DidlContainer>().toList(),
+      albums: albumHits.whereType<DidlContainer>().toList(),
+      tracks: trackHits.whereType<DidlItem>().where((i) => i.isAudio).toList(),
+    );
   }
 
   @override
@@ -151,13 +155,15 @@ void main() {
     expect(page2.length, 10);
   });
 
-  test('search lists albums, then tracks, with quotes escaped', () async {
+  test('search lists artists, albums, then tracks', () async {
+    source.artistHits = didl([container('walter', 'Bruno Walter', cls: 'object.container.person.musicArtist')]);
     source.albumHits = didl([container('pastorale', 'Pastorale')]);
     source.trackHits = didl([track('t2', 'Andante molto mosso'), track('v1', 'Film', cls: 'object.item.videoItem')]);
-    final hits = await car.search('Walter "live"');
-    expect(hits.map((n) => n.title), ['Pastorale', 'Andante molto mosso']);
-    expect(source.searches.first, contains(r'"Walter \"live\""'));
-    await car.play(hits.first.id);
+    final hits = await car.search('walter pastorale');
+    expect(hits.map((n) => n.title), ['Bruno Walter', 'Pastorale', 'Andante molto mosso']);
+    expect(source.searches, ['walter pastorale']);
+    expect(hits.first.browsable, isTrue, reason: 'an artist opens like a folder');
+    await car.play(hits[1].id);
     expect(player.played.length, 3, reason: 'album plays whole');
     await car.play(hits.last.id);
     expect(player.played, ['Andante molto mosso'], reason: 'a found track plays alone');

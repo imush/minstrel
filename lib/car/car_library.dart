@@ -26,7 +26,9 @@ abstract class CarSource {
   /// Fires when servers may have come or gone.
   Stream<void> get changes;
   Future<BrowseResult> browse(String udn, String objectId, {int start = 0, int count = 200});
-  Future<BrowseResult> search(String udn, String criteria, {int count = 50});
+
+  /// The library search of server [udn] (see LibrarySearch).
+  Future<LibrarySearchResult> search(String udn, String query);
 
   /// Every audio track under a container, for playing a whole album.
   Future<List<DidlItem>> tracks(String udn, String containerId);
@@ -122,18 +124,22 @@ class CarLibrary {
     return [for (final o in objects) ?_node(udn, containerId, o)];
   }
 
-  /// Albums and tracks matching [query], from every server that can search.
+  /// Artists, albums and tracks matching [query], from every server that
+  /// can search.
   Future<List<CarNode>> search(String query) async {
     final q = query.trim();
     if (q.isEmpty) return const [];
     final out = <CarNode>[];
     for (final s in source.servers) {
-      final (albums, tracks) = await _search(s.udn, q);
-      for (final a in albums) {
+      final r = await _search(s.udn, q);
+      for (final a in r.artists) {
+        out.add(CarNode(_id(['c', s.udn, a.id]), a.title, art: a.albumArt, browsable: true));
+      }
+      for (final a in r.albums) {
         out.add(CarNode(_id(['a', s.udn, a.id]), a.title,
             subtitle: a.performer ?? a.composer, art: a.albumArt, playable: true));
       }
-      for (final t in tracks) {
+      for (final t in r.tracks) {
         out.add(CarNode(_id(['a', s.udn, t.id]), t.title,
             subtitle: [t.performer, t.album].nonNulls.join(' · '), art: t.albumArt, playable: true));
       }
@@ -178,10 +184,10 @@ class CarLibrary {
       return;
     }
     for (final s in source.servers) {
-      final (albums, tracks) = await _search(s.udn, q);
-      if (albums.isNotEmpty) return play(_id(['a', s.udn, albums.first.id]));
-      if (tracks.isNotEmpty) {
-        await player.playItems(tracks, 0);
+      final r = await _search(s.udn, q);
+      if (r.albums.isNotEmpty) return play(_id(['a', s.udn, r.albums.first.id]));
+      if (r.tracks.isNotEmpty) {
+        await player.playItems(r.tracks, 0);
         return;
       }
     }
@@ -206,24 +212,20 @@ class CarLibrary {
 
   final _lastSearch = <String, DidlItem>{};
 
-  Future<(List<DidlContainer>, List<DidlItem>)> _search(String udn, String q) async {
-    final s = q.replaceAll(r'\', r'\\').replaceAll('"', r'\"');
+  /// The same search as on the phone: every word must match, accents and
+  /// small misspellings allowed, so "play Haydn symphony 94" and "Dvorak"
+  /// work by voice.
+  Future<LibrarySearchResult> _search(String udn, String q) async {
     try {
-      final albums = await source.search(udn,
-          'upnp:class derivedfrom "object.container.album" and (dc:title contains "$s" or upnp:artist contains "$s")',
-          count: 20);
-      final tracks = await source.search(udn,
-          'upnp:class derivedfrom "object.item.audioItem" and '
-          '(dc:title contains "$s" or upnp:artist contains "$s" or upnp:album contains "$s")',
-          count: 50);
-      final found = tracks.objects.whereType<DidlItem>().where((i) => i.isAudio).toList();
-      for (final t in found) {
+      final r = await source.search(udn, q);
+      for (final t in r.tracks) {
         _lastSearch[_id(['a', udn, t.id])] = t;
       }
-      return (albums.objects.whereType<DidlContainer>().where(_isAudioContainer).toList(), found);
+      return LibrarySearchResult(
+          artists: r.artists, albums: r.albums.where(_isAudioContainer).toList(), tracks: r.tracks);
     } on Object {
       // A server without search, or one that's unreachable.
-      return (const <DidlContainer>[], const <DidlItem>[]);
+      return LibrarySearchResult.empty;
     }
   }
 

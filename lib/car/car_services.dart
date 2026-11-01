@@ -29,14 +29,16 @@ class RegistrySource implements CarSource {
       _cd(udn).browse(objectId, start: start, count: count);
 
   @override
-  Future<BrowseResult> search(String udn, String criteria, {int count = 50}) =>
-      _cd(udn).search(_searchRoot, criteria, count: count);
+  Future<LibrarySearchResult> search(String udn, String query) {
+    final s = registry.server(udn);
+    if (s == null) throw StateError('server $udn is not available');
+    // A car screen shows a short list.
+    return s.search.search(query, maxArtists: 10, maxAlbums: 20, maxTracks: 50);
+  }
 
   @override
   Future<List<DidlItem>> tracks(String udn, String containerId) =>
       _cd(udn).collectTracks(containerId, maxTracks: 500, maxRequests: 50);
-
-  static const _searchRoot = '0';
 }
 
 /// Plays for the car: always on this phone, since the car's speakers are
