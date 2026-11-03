@@ -86,6 +86,16 @@ cat /var/log/launchpad.log          # shows the console's setup link</code></pre
   <h3>macOS or Windows</h3>
   <p>Fine on a computer that already runs your media server and stays on. Build it with Go as above and run <code>minstrel-launchpad serve</code>, at login or as a service.</p>
 
+  <h3 id="ffmpeg">ffmpeg, for compression</h3>
+  <p>Optional, and only for listening away from home: with <strong>ffmpeg</strong> on the same machine, the app can ask for a lossless track as a smaller AAC copy when it's on mobile data. Without ffmpeg everything still works &mdash; the original is sent, which is what you want at home anyway.</p>
+  <pre><code>sudo apt install ffmpeg      # Debian, Ubuntu, Raspberry Pi OS
+pkg install ffmpeg           # FreeBSD, TrueNAS CORE jail
+brew install ffmpeg          # macOS</code></pre>
+  <p>It arrives with a long tail of dependencies; that is normal, and any build that reads FLAC and writes AAC will do. Restart the launchpad afterwards, then look at the console's <strong>Compression</strong> card: it names the ffmpeg it found and its version, or says why there is none.</p>
+  <p>If it says there is none although you installed one, the service's <code>PATH</code> is the usual reason &mdash; a service manager often hands down its own, leaving out <code>/usr/local/bin</code>. Either fix that or name the program:</p>
+  <pre><code>minstrel-launchpad serve -ffmpeg /usr/local/bin/ffmpeg</code></pre>
+  <p><code>LAUNCHPAD_FFMPEG</code> does the same. In Docker, ffmpeg has to be inside the image, where you can't add it afterwards: the image built above carries none, so compression is off there until an image that includes it is published.</p>
+
   <h2 id="console">3. Open the console</h2>
   <p>The launchpad's web console is at <code>http://<em>its address</em>:7444</code>, reachable from your home network only.</p>
   <ol>
@@ -137,7 +147,7 @@ cat /var/log/launchpad.log          # shows the console's setup link</code></pre
     <li>The status line should read <em>Connected to sat.example.org</em>, with the name the app will use for your home. From then on the launchpad reconnects by itself, after restarts and network outages.</li>
     <li>New invitations include the satellite. Devices paired earlier pick it up the next time they connect at home, so open the app once on your Wi-Fi.</li>
   </ol>
-  <p>Nothing to do on the router: the launchpad only makes an outgoing connection on port 443. <em>Leave satellite</em> on the same tab stops using it. A satellite may limit each home's speed and monthly data, because relayed traffic costs its owner; at CD quality, music needs about 1&nbsp;Mbit/s, and choosing a compressed quality in the app's settings uses much less.</p>
+  <p>Nothing to do on the router: the launchpad only makes an outgoing connection on port 443. <em>Leave satellite</em> on the same tab stops using it. A satellite may limit each home's speed and monthly data, because relayed traffic costs its owner; at CD quality, music needs about 1&nbsp;Mbit/s, and choosing a compressed quality in the app's settings uses much less (it needs <a href="#ffmpeg">ffmpeg</a> on the launchpad).</p>
 
   <h3>Check it</h3>
   <p>With Wi-Fi off on your phone, open the home in the app. Under Homes it should read <em>Connected through the satellite</em> (or <em>Connected from outside</em>, if your direct address answered first). If the console shows “refused this launchpad”, the invitation was used or expired: ask for a new one.</p>
@@ -180,6 +190,7 @@ service satellite start</code></pre>
     <li><strong>“Can't reach home” in the app</strong>: the Homes list shows each address tried and what happened. “No answer” on the outside address usually means the port forward or dynamic DNS isn't right; check with the browser test above.</li>
     <li><strong>Not reaching home through the satellite</strong>: if the phone was paired before the launchpad joined, it doesn't know the satellite yet. Open the app once at home, on the same Wi-Fi, and it picks the satellite up.</li>
     <li><strong>No media servers on the console</strong>: the launchpad isn't on the same network segment as the server, or multicast is blocked. In Docker use <code>--network host</code>; in a jail or VM use bridged networking. Or add the server's description URL by hand.</li>
+    <li><strong>The app's compressed quality makes no difference</strong>: the launchpad has no ffmpeg, so it sends the originals. The console's <strong>Compression</strong> card says whether it found one &mdash; see <a href="#ffmpeg">ffmpeg, for compression</a>.</li>
     <li><strong>Forgot the console password</strong>: run <code>minstrel-launchpad console</code> on the launchpad for a new setup link (add <code>-data</code> with its data directory if you set one, such as <code>-data /var/db/launchpad</code> in a FreeBSD jail, as the user it runs as).</li>
   </ul>
   <p>More detail, all options and the API are in the <a href="https://github.com/imush/minstrel-launchpad#readme">README</a>. Questions: <a href="https://github.com/imush/minstrel-launchpad/issues">GitHub issues</a>.</p>
