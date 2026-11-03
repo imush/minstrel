@@ -14,13 +14,30 @@ import 'search_page.dart';
 /// One level of a server's browse tree. MinimServer trees go many levels
 /// deep (Composer > name > Work > Performer > ...), so this page simply
 /// pushes itself again for each container.
+/// One step of the trail that led to the page being shown.
+typedef BrowseCrumb = ({String id, String title});
+
 class BrowsePage extends StatefulWidget {
   final MediaServer server;
   final String containerId;
   final String title;
 
+  /// Artwork for this container, handed down by whoever pushed the page so the
+  /// album image can be shown before the tracks have loaded. Falls back to the
+  /// first track's art when the caller had none (search, car, a deep link).
+  final Uri? albumArt;
+
+  /// Ancestors, outermost first, excluding this page. Empty means there is
+  /// nothing above us on the stack, so no breadcrumb is offered.
+  final List<BrowseCrumb> path;
+
   const BrowsePage(
-      {super.key, required this.server, required this.containerId, required this.title});
+      {super.key,
+      required this.server,
+      required this.containerId,
+      required this.title,
+      this.albumArt,
+      this.path = const []});
 
   @override
   State<BrowsePage> createState() => _BrowsePageState();
@@ -117,6 +134,13 @@ class _BrowsePageState extends State<BrowsePage> {
     final hasItems = items.isNotEmpty;
     final shown = _shown;
     final filtering = _filter != null;
+    // A leaf - an album's tracks, with nothing to browse into - gets one image
+    // at the top, the way BubbleUPnP does it. Listings that contain containers
+    // (performers, composers) keep their per-row thumbnails and get no header,
+    // which is the same rule seen from the other side.
+    final isLeaf = hasItems && !_objects.any((o) => o is DidlContainer);
+    final headerArt = widget.albumArt ?? (hasItems ? items.first.albumArt : null);
+    final showHeader = isLeaf && headerArt != null;
     return Scaffold(
       appBar: AppBar(
         title: filtering
@@ -125,7 +149,7 @@ class _BrowsePageState extends State<BrowsePage> {
                 decoration: InputDecoration(hintText: 'Filter ${widget.title}', border: InputBorder.none),
                 onChanged: _setFilter,
               )
-            : Text(widget.title),
+            : _TitleBar(title: widget.title, path: widget.path),
         actions: [
           if (filtering)
             IconButton(tooltip: 'Close filter', icon: const Icon(Icons.close), onPressed: () => _setFilter(null))
@@ -159,8 +183,30 @@ class _BrowsePageState extends State<BrowsePage> {
                 return false;
               },
               child: ListView.builder(
-                itemCount: shown.length + (_done ? 0 : 1),
-                itemBuilder: (context, i) {
+                itemCount: (showHeader ? 1 : 0) + shown.length + (_done ? 0 : 1),
+                itemBuilder: (context, rawIndex) {
+                  if (showHeader && rawIndex == 0) {
+                    // The name lives here rather than only in the app bar: with
+                    // five actions and a back button there is almost nothing
+                    // left for a title up there, and album names are long
+                    // ("Di..." was all that fitted). Here it gets two full
+                    // lines, and the app bar is free to stay short.
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      child: Column(children: [
+                        CoverArt(headerArt, size: 160),
+                        const SizedBox(height: 12),
+                        Text(
+                          widget.title,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ]),
+                    );
+                  }
+                  final i = showHeader ? rawIndex - 1 : rawIndex;
                   if (i >= shown.length) {
                     return const Padding(
                       padding: EdgeInsets.all(24),
@@ -177,7 +223,15 @@ class _BrowsePageState extends State<BrowsePage> {
                           context,
                           MaterialPageRoute<void>(
                             builder: (_) => BrowsePage(
-                                server: widget.server, containerId: c.id, title: c.title),
+                              server: widget.server,
+                              containerId: c.id,
+                              title: c.title,
+                              albumArt: c.albumArt,
+                              path: [
+                                ...widget.path,
+                                (id: widget.containerId, title: widget.title)
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -224,6 +278,52 @@ Future<bool> playTracks(BuildContext context, List<DidlItem> items, int start) a
 }
 
 /// Opens a search of the whole library, on servers that can search.
+/// The app bar title. One level deep it is just text; deeper in it becomes a
+/// button opening the trail, so you can jump several levels back at once
+/// instead of tapping Back repeatedly.
+///
+/// Deliberately a menu rather than a breadcrumb bar: a bar costs a row of
+/// vertical space on every screen, and the same testers asking for this asked
+/// for denser listings in the same breath.
+class _TitleBar extends StatelessWidget {
+  final String title;
+  final List<BrowseCrumb> path;
+
+  const _TitleBar({required this.title, required this.path});
+
+  @override
+  Widget build(BuildContext context) {
+    if (path.isEmpty) return Text(title);
+    return PopupMenuButton<int>(
+      tooltip: 'Go back to',
+      position: PopupMenuPosition.under,
+      // Pop (depth - index) routes. No route names needed: the pages are a
+      // plain stack, so counting down is enough and leaves the ancestors'
+      // scroll positions intact.
+      onSelected: (index) {
+        var n = path.length - index;
+        Navigator.of(context).popUntil((_) => n-- <= 0);
+      },
+      itemBuilder: (context) => [
+        for (final (i, crumb) in path.indexed)
+          PopupMenuItem<int>(
+            value: i,
+            child: Row(children: [
+              SizedBox(width: 16.0 * i),
+              if (i > 0) const Icon(Icons.subdirectory_arrow_right, size: 16),
+              const SizedBox(width: 4),
+              Flexible(child: Text(crumb.title, overflow: TextOverflow.ellipsis)),
+            ]),
+          ),
+      ],
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Flexible(child: Text(title, overflow: TextOverflow.ellipsis)),
+        const Icon(Icons.arrow_drop_down),
+      ]),
+    );
+  }
+}
+
 class _SearchButton extends StatefulWidget {
   final MediaServer server;
 
@@ -292,28 +392,32 @@ class ItemTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final credits = [
-      if (item.composer != null) item.composer!,
-      if (item.performer != null) item.performer!,
-    ].join(' · ');
-    final res = item.resources.firstOrNull;
+    // Title only. Composer, performer and format used to sit under every row,
+    // which pushed each track to three lines and fitted three tracks on a
+    // phone screen; the same information is one tap away under Info. Testers
+    // asked for denser listings and this is most of the space back.
     return ListTile(
+      dense: true,
+      visualDensity: VisualDensity.compact,
+      minLeadingWidth: 0,
+      horizontalTitleGap: 8,
       leading: SizedBox(
-        width: 48,
-        child: Center(
-          child: Text(item.trackNumber?.toString() ?? '',
-              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+        width: 24,
+        child: Text(
+          item.trackNumber?.toString() ?? '',
+          textAlign: TextAlign.right,
+          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
       ),
-      title: Text(item.title),
-      subtitle: Text(
-        [credits, if (res != null) res.formatLabel].where((s) => s.isNotEmpty).join('  ·  '),
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-      ),
+      title: Text(item.title, maxLines: 2, overflow: TextOverflow.ellipsis),
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-        Text(formatDuration(item.duration)),
-        IconButton(tooltip: 'More', icon: const Icon(Icons.more_vert), onPressed: onMore),
+        Text(formatDuration(item.duration), style: theme.textTheme.bodySmall),
+        IconButton(
+          tooltip: 'More',
+          icon: const Icon(Icons.more_vert),
+          visualDensity: VisualDensity.compact,
+          onPressed: onMore,
+        ),
       ]),
       enabled: item.isAudio,
       onTap: onTap,
