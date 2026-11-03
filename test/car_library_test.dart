@@ -169,6 +169,16 @@ void main() {
     expect(player.played, ['Andante molto mosso'], reason: 'a found track plays alone');
   });
 
+  test('spoken requests lose the words around what to find', () async {
+    expect(spokenQuery('find Haydn symphony 104'), 'Haydn symphony 104');
+    expect(spokenQuery('Search for Dvorak cello concerto please'), 'Dvorak cello concerto');
+    expect(spokenQuery('can you play symphony 104 by Haydn on Minstrel'), 'symphony 104 Haydn');
+    expect(spokenQuery('Show Boat'), 'Show Boat');
+    expect(spokenQuery('Abbey Road'), 'Abbey Road');
+    await car.search('find walter pastorale');
+    expect(source.searches.last, 'walter pastorale');
+  });
+
   test('voice: an album if one matches, else tracks, else resume', () async {
     source.albumHits = didl([container('pastorale', 'Pastorale')]);
     await car.playFromSearch('pastorale');

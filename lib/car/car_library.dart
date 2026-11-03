@@ -217,7 +217,7 @@ class CarLibrary {
   /// work by voice.
   Future<LibrarySearchResult> _search(String udn, String q) async {
     try {
-      final r = await source.search(udn, q);
+      final r = await source.search(udn, spokenQuery(q));
       for (final t in r.tracks) {
         _lastSearch[_id(['a', udn, t.id])] = t;
       }
@@ -279,3 +279,23 @@ class CarLibrary {
   static String _id(List<String> parts) => parts.map(Uri.encodeComponent).join('|');
   static List<String> _parts(String id) => id.split('|').map(Uri.decodeComponent).toList();
 }
+
+/// A spoken request without the words around what to find: Google hands
+/// over the whole phrase, and the search wants every word to match, so
+/// "find Haydn symphony 104" found nothing. Drops a leading command ("find",
+/// "search for", "play", "show me"...), a trailing "on Minstrel" or
+/// "please", and "by" between a title and a name ("symphony 104 by Haydn").
+String spokenQuery(String query) {
+  var q = query.trim();
+  q = q.replaceFirst(_spokenLead, '');
+  q = q.replaceFirst(_spokenTail, '');
+  q = q.replaceAll(_spokenBy, ' ');
+  return q.trim();
+}
+
+final _spokenLead = RegExp(
+    r'^(?:(?:hey|ok|okay|please|can you|could you|would you|i want to|i would like to|i.d like to|'
+    r'find|search for|search|look for|look up|show me|play|play me|listen to|put on)\s+)+',
+    caseSensitive: false);
+final _spokenTail = RegExp(r'(?:\s+(?:on|in|with|using|from) minstrel)?(?:\s+please)?$', caseSensitive: false);
+final _spokenBy = RegExp(r'\s+by\s+', caseSensitive: false);
