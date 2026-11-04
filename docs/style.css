@@ -100,3 +100,16 @@ h3 .soon { margin-left: 8px; padding: 2px 8px; border-radius: 6px; background: #
 .page code { font-family: var(--mono); font-size: 0.88em; }
 .page :not(pre) > code { padding: 1px 5px; border-radius: 4px; background: #EBE2D0; }
 .page h3 { margin: 28px 0 6px; }
+
+/* Screenshots. Phone shots are portrait and sit two-up; the car ones are
+   landscape and take the full column. */
+.shots { display: grid; gap: 18px; margin: 20px 0 8px; }
+.shots figure { margin: 0; }
+.shots img {
+  display: block; width: 100%; height: auto;
+  border: 1px solid #E4DCCB; border-radius: 10px; background: var(--midnight);
+}
+.shots figcaption { margin-top: 8px; font-size: 14px; color: var(--ink-soft); }
+@media (min-width: 620px) {
+  .shots.phones { grid-template-columns: 1fr 1fr; }
+}
