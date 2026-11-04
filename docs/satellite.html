@@ -55,6 +55,19 @@
     you do not need this page &mdash; see
     <a href="launchpad#satellite">joining a satellite</a> instead.</p>
 
+  <h2 id="fallback">It is a fallback, not the route</h2>
+  <p>The app races every address it knows for a home and takes the first that
+    answers, giving the direct ones a head start of about a second and a half.
+    At home the local address wins; away from home, a working forwarded port
+    normally wins too. The satellite is used when nothing direct answers in
+    that time, or fails outright.</p>
+  <p>So a home that <em>can</em> open a port sends almost nothing through the
+    relay &mdash; just an idle connection held open, a few bytes an hour. Only
+    homes with no way in, behind carrier-grade NAT or an untouchable router,
+    push their music through it. That is worth knowing before you size the
+    hosting: ten homes on a satellite does not mean ten homes' worth of
+    traffic.</p>
+
   <h2 id="docker">1. Run it in Docker</h2>
   <p>The quickest way, on any VM with a public address:</p>
   <pre><code>docker run -d --name satellite --restart unless-stopped \
@@ -111,8 +124,8 @@
     VM, open 443, install Docker, run the command above.</p>
 
   <h3>A word on the bill</h3>
-  <p>This relay carries audio, and on the hyperscalers you pay for every byte
-    leaving the machine. Google and AWS charge roughly $0.09&ndash;0.12/GB once
+  <p>For the homes that do rely on it, this relay carries audio, and on the
+    hyperscalers you pay for every byte leaving the machine. Google and AWS charge roughly $0.09&ndash;0.12/GB once
     the free allowance is gone, and an hour of lossless listening is about half
     a gigabyte. Hosts like Hetzner include tens of terabytes in the monthly
     price instead, which for this job is the difference between pennies and a

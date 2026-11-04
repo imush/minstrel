@@ -195,7 +195,7 @@ brew install ffmpeg          # macOS</code></pre>
   <p>Each invitation works once. The console lists <em>Paired devices</em> with when each last connected and from where; <em>Revoke</em> removes one. In the app, the home appears under <strong>Homes</strong>; ⋮ → <strong>Rename</strong> names it just on that phone.</p>
 
   <h2 id="satellite">Satellite mode: no port to open</h2>
-  <p>A <strong>minstrel-satellite</strong> is a small relay on the internet. Your launchpad connects out to it and keeps the line open, and your home gets a name under the satellite's domain. Away from home, the app tries your direct address first, if you have one, and goes through the satellite only when that doesn't answer.</p>
+  <p>A <strong>minstrel-satellite</strong> is a small relay on the internet. Your launchpad connects out to it and keeps the line open, and your home gets a name under the satellite's domain. Away from home, the app tries your direct address first, if you have one, and goes through the satellite only when that doesn't answer quickly &mdash; so a home that can open a port barely uses the relay at all.</p>
   <p>The connection stays encrypted end to end, between the app and your launchpad. The satellite holds no keys for it and can't read or change your music; it sees only which home the traffic is for, how much passes, and when.</p>
 
   <h3>Join a satellite</h3>
