@@ -172,12 +172,40 @@ brew install ffmpeg          # macOS</code></pre>
   </ul>
   <p><strong>Finally, tell the launchpad</strong>: on the console under <em>Outside access → Direct</em>, enter the static IP or dynamic DNS name with the outside port, for example <code>myhome.example.net:443</code>, and save. Paired phones learn it the next time they connect at home; new invitations include it.</p>
 
+  <h3 id="ipv6">Over IPv6, with no port forwarding</h3>
+  <p>Everything above is about IPv4, where your home shares one address and a
+    router has to forward a port inward. <strong>IPv6 has no NAT</strong>: the
+    launchpad has an address of its own that is already routable, and the
+    router simply refuses traffic to it by default. So instead of forwarding a
+    port you allow one through &mdash; a firewall rule, not a redirect.</p>
+  <p>This matters most where IPv4 offers nothing at all. <strong>Behind
+    carrier-grade NAT there is no port to forward, but the IPv6 address is
+    yours</strong>, and plenty of providers that share IPv4 still hand out a
+    proper IPv6 prefix. If yours does, and doesn't filter inbound IPv6, your
+    home can be reached directly and a relay stops being necessary.</p>
+  <p><strong>Nothing to type on the console.</strong> The launchpad finds its
+    own global IPv6 addresses and offers them to the app with the rest; the app
+    tries them all and uses whichever answers first. If your provider changes
+    your prefix, paired devices pick up the new address the next time they
+    connect at home.</p>
+  <p>On the router, allow inbound TCP to port 7443. On pfSense or OPNsense:
+    Firewall &rarr; Rules &rarr; <em>WAN</em> &rarr; Add, Address Family
+    <em>IPv6</em>, Protocol TCP, Source any, Destination <em>LAN subnets</em>,
+    port 7443. Choosing the subnet rather than the launchpad's exact address
+    keeps the rule working after a prefix change, at the cost of allowing that
+    port to any machine on your network that listens on it.</p>
+  <p>Three things have to line up, and any one can be missing: your provider
+    has to route IPv6 to you, it must not filter inbound connections, and the
+    network you are on when away &mdash; usually a mobile carrier &mdash; needs
+    IPv6 too. Test it as below, with the address the console shows, in square
+    brackets: <code>https://[2600:db8::1]:7443/</code></p>
+
   <h3>Check it</h3>
   <p>With Wi-Fi off on your phone, open <code>https://myhome.example.net:443/</code> in its browser. A certificate warning followed by “404 page not found” means it works: that's the launchpad, which shows nothing to strangers. (Testing from inside your home may fail even when all is well: many routers don't loop back to their own public address.)</p>
 
   <h3>When direct mode can't work</h3>
   <ul>
-    <li><strong>Carrier-grade NAT.</strong> If the address your router shows as its WAN IP is different from the one sites like “what is my IP” report, or starts with <code>100.64</code> to <code>100.127</code>, your provider shares one public address among many homes, and no port can be opened. Ask the provider for a public IP, or use a <a href="#satellite">satellite</a>.</li>
+    <li><strong>Carrier-grade NAT.</strong> If the address your router shows as its WAN IP is different from the one sites like “what is my IP” report, or starts with <code>100.64</code> to <code>100.127</code>, your provider shares one public address among many homes, and no port can be opened. Try <a href="#ipv6">IPv6</a> first &mdash; providers that share IPv4 often still give you a real IPv6 prefix, and then there is nothing to forward. Failing that, ask the provider for a public IP, or use a <a href="#satellite">satellite</a>.</li>
     <li><strong>Two routers.</strong> If your router sits behind your provider's router, forward the port on both, or put the provider's box in bridge mode.</li>
   </ul>
 
