@@ -101,15 +101,22 @@ h3 .soon { margin-left: 8px; padding: 2px 8px; border-radius: 6px; background: #
 .page :not(pre) > code { padding: 1px 5px; border-radius: 4px; background: #EBE2D0; }
 .page h3 { margin: 28px 0 6px; }
 
-/* Screenshots. Phone shots are portrait and sit two-up; the car ones are
-   landscape and take the full column. */
-.shots { display: grid; gap: 18px; margin: 20px 0 8px; }
-.shots figure { margin: 0; }
+/* Screenshots, as thumbnails that open the full image. Shown full width a
+   phone screenshot is about 750px tall on a desktop, which swamps the text. */
+.shots {
+  display: grid; gap: 22px 18px; margin: 20px 0 8px; justify-items: center;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+.shots.car { grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); }
+.shots figure { margin: 0; max-width: 100%; }
+.shots a { display: block; }
 .shots img {
-  display: block; width: 100%; height: auto;
+  display: block; max-width: 100%; height: auto;
   border: 1px solid #E4DCCB; border-radius: 10px; background: var(--midnight);
 }
-.shots figcaption { margin-top: 8px; font-size: 14px; color: var(--ink-soft); }
-@media (min-width: 620px) {
-  .shots.phones { grid-template-columns: 1fr 1fr; }
+.shots.phones img { max-height: 380px; width: auto; }
+.shots.car img { max-height: 260px; width: auto; }
+.shots figcaption {
+  margin-top: 8px; font-size: 13px; line-height: 1.45;
+  color: var(--ink-soft); text-align: center;
 }
