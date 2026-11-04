@@ -284,6 +284,15 @@ void main() {
       expect(proxy.status(paired.id).viaSatellite, isTrue);
     });
 
+    test('tells IPv6 from IPv4', () {
+      // The address in use decides what the Homes list says: a bracketed
+      // host is IPv6, which needs no port forwarding at the home end.
+      expect(const HomeStatus(HomeState.connected, address: '[2600:db8::1]:7443').isIPv6, isTrue);
+      expect(const HomeStatus(HomeState.connected, address: '198.51.100.7:443').isIPv6, isFalse);
+      expect(const HomeStatus(HomeState.connected, address: 'myhome.example.net:443').isIPv6, isFalse);
+      expect(const HomeStatus(HomeState.connecting).isIPv6, isFalse);
+    });
+
     test('asks the launchpad to compress when set to', () async {
       final home = await pairWithLaunchpad(invitation(), deviceName: 'p');
       proxy.add(home);

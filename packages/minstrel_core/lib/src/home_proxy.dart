@@ -22,6 +22,14 @@ class HomeStatus {
 
   const HomeStatus(this.state, {this.address, this.problem, this.tried = const [], this.viaSatellite = false});
 
+  /// Whether the address in use is IPv6. Written `[host]:port`, so the
+  /// brackets come off before parsing.
+  bool get isIPv6 {
+    final host = address == null ? null : Uri.tryParse('https://$address')?.host;
+    final ip = host == null ? null : InternetAddress.tryParse(host);
+    return ip != null && ip.type == InternetAddressType.IPv6;
+  }
+
   /// Connected over the home network rather than from outside.
   bool get atHome {
     final host = address == null ? null : Uri.tryParse('https://$address')?.host;

@@ -272,7 +272,9 @@ class _HomeTile extends StatelessWidget {
               ? 'Connected on this network'
               : status.viaSatellite
                   ? 'Connected through the satellite'
-                  : 'Connected from outside',
+                  : status.isIPv6
+                      ? 'Connected from outside over IPv6'
+                      : 'Connected from outside over IPv4',
           null,
         ),
       HomeState.unreachable || HomeState.notPaired =>
