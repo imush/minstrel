@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Running a satellite — Minstrel Player</title>
+<meta name="description" content="Run a minstrel-satellite: a small relay on a VPS that lets homes behind CGNAT reach their music without opening a port. Docker, FreeBSD or Linux, with DNS and cloud setup.">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta property="og:image" content="https://minstrelplayer.org/social.png">
+<meta property="og:site_name" content="Minstrel Player">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="mark" viewBox="0 0 120 120"><path d="M60 100 C 32 100, 22 80, 28 58 C 32 42, 27 30, 18 20" fill="none" stroke="#E8A84A" stroke-width="8" stroke-linecap="round"/><path d="M60 100 C 88 100, 98 80, 92 58 C 88 42, 93 30, 102 20" fill="none" stroke="#E8A84A" stroke-width="8" stroke-linecap="round"/><circle cx="18" cy="20" r="6.5" fill="#E8A84A"/><circle cx="102" cy="20" r="6.5" fill="#E8A84A"/><path d="M45 86 V77 M55 86 V67 M65 86 V57 M75 86 V47" fill="none" stroke="#F3EBDD" stroke-width="7" stroke-linecap="round"/></symbol></svg>
+
+<div class="dark">
+  <div class="wrap">
+    <nav aria-label="Main">
+      <a class="brand" href="/">
+        <svg viewBox="0 0 120 120" aria-hidden="true"><use href="#mark"/></svg>
+        minstrel
+      </a>
+      <ul>
+        <li><a href="app">The app</a></li>
+        <li><a href="launchpad">Launchpad</a></li>
+        <li><a href="satellite" aria-current="page">Satellite</a></li>
+        <li class="optional"><a href="https://github.com/imush/minstrel-satellite">GitHub</a></li>
+      </ul>
+    </nav>
+  </div>
+</div>
+
+<main class="page">
+  <img class="page-icon" src="icon.svg" alt="" width="72" height="72">
+  <p class="eyebrow">Guide</p>
+  <h1>Running a satellite</h1>
+  <p class="meta">Only for homes that cannot open a port. Most people never need one.</p>
+
+  <p>A <strong>minstrel-satellite</strong> is a small relay with a public address.
+    A launchpad connects out to it and keeps the line open, so the app can reach
+    a home that has no forwarded port &mdash; behind carrier-grade NAT, say, or a
+    router nobody wants to touch.</p>
+
+  <p>It carries traffic, not trust. The connection stays encrypted end to end
+    between the app and the launchpad; the relay routes by SNI without
+    terminating TLS, so it holds no keys and cannot read or change your music.
+    It sees which home the bytes are for, how many, and when.</p>
+
+  <p>One satellite serves many homes, so a family or a group of friends usually
+    needs one between them. If you only want to <em>use</em> someone else's,
+    you do not need this page &mdash; see
+    <a href="launchpad#satellite">joining a satellite</a> instead.</p>
+
+  <h2 id="docker">1. Run it in Docker</h2>
+  <p>The quickest way, on any VM with a public address:</p>
+  <pre><code>docker run -d --name satellite --restart unless-stopped \
+  -p 443:443 -v /srv/satellite:/data \
+  -e SATELLITE_DOMAIN=sat.example.org \
+  imush/minstrel-satellite:latest</code></pre>
+  <p>Built for amd64 and arm64. The container binds 443 itself, which saves the
+    redirect a plain binary needs for a privileged port. Give <code>/data</code>
+    a path you choose: it holds the relay's key and the list of homes, and an
+    unnamed volume is replaced when the container is recreated &mdash; which
+    invalidates every invitation.</p>
+  <p>There is a <code>docker-compose.yml</code> in the
+    <a href="https://github.com/imush/minstrel-satellite#readme">repository</a>
+    with the rate limits ready to uncomment.</p>
+
+  <h2 id="dns">2. Point DNS at it</h2>
+  <p>Each home is reached as <code>&lt;id&gt;.&lt;domain&gt;</code>, so the
+    satellite needs its own name <em>and</em> a wildcard under it:</p>
+  <pre><code>sat.example.org.     A     203.0.113.10
+*.sat.example.org.   A     203.0.113.10
+(and AAAA records, if the VM has IPv6)</code></pre>
+  <p>Miss the wildcard and the satellite starts cleanly, accepts an invitation,
+    and then quietly fails to route &mdash; so it is worth checking first.</p>
+  <p><strong>With no domain of your own</strong>, use
+    <a href="https://nip.io">nip.io</a>: it resolves
+    <code>anything.203-0-113-10.nip.io</code> to that address, wildcard
+    included, free. For 203.0.113.10 set
+    <code>SATELLITE_DOMAIN=sat.203-0-113-10.nip.io</code>. Good enough to try
+    it; a name you control is better for anything lasting, because then you can
+    move the satellite without re-inviting every home.</p>
+
+  <h2 id="where">3. Where to run it</h2>
+  <p>Any VM with a public IPv4 address and TCP 443 reachable. One vCPU and
+    512&nbsp;MB is plenty &mdash; the relay copies bytes and never decodes
+    them.</p>
+
+  <h3>Google Cloud</h3>
+  <p>Compute Engine &rarr; an <code>e2-micro</code> in a region where it is
+    covered by the always-free tier. Open the port, replacing
+    <code>satellite</code> with the VM's network tag:</p>
+  <pre><code>gcloud compute firewall-rules create satellite-443 \
+  --allow tcp:443 --target-tags satellite --source-ranges 0.0.0.0/0</code></pre>
+  <p>Reserve a static external address, or the IP changes when the VM restarts
+    and every paired device loses the relay.</p>
+
+  <h3>AWS</h3>
+  <p>EC2 &rarr; a <code>t4g.nano</code> (arm64, cheapest) or
+    <code>t3.micro</code>. Allow inbound TCP 443 from <code>0.0.0.0/0</code> in
+    the security group, and attach an Elastic IP for the same reason. Lightsail
+    is simpler and bundles transfer.</p>
+
+  <h3>Anywhere else</h3>
+  <p>Hetzner, OVH, Scaleway and most small hosts work the same way: create the
+    VM, open 443, install Docker, run the command above.</p>
+
+  <h3>A word on the bill</h3>
+  <p>This relay carries audio, and on the hyperscalers you pay for every byte
+    leaving the machine. Google and AWS charge roughly $0.09&ndash;0.12/GB once
+    the free allowance is gone, and an hour of lossless listening is about half
+    a gigabyte. Hosts like Hetzner include tens of terabytes in the monthly
+    price instead, which for this job is the difference between pennies and a
+    surprise.</p>
+  <p>Either way, set the limits below before handing out invitations.</p>
+
+  <h2 id="freebsd">Without Docker: FreeBSD or Linux</h2>
+  <p>One VM with only the satellite on it is the intended setup. Build it on any
+    computer with <a href="https://go.dev/dl/">Go</a>:</p>
+  <pre><code>git clone https://github.com/imush/minstrel-satellite &amp;&amp; cd minstrel-satellite
+GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 go build -o minstrel-satellite .</code></pre>
+  <p>On <strong>FreeBSD</strong>, with the files from <code>contrib/freebsd</code>.
+    It runs as its own unprivileged user on port 7443, and pf redirects 443 to
+    it:</p>
+  <pre><code>pw useradd satellite -d /nonexistent -s /usr/sbin/nologin
+install -m 755 minstrel-satellite /usr/local/bin/
+install -m 555 contrib/freebsd/satellite /usr/local/etc/rc.d/
+sysrc satellite_enable=YES satellite_domain=sat.example.org
+cp contrib/freebsd/pf.conf /etc/pf.conf      # check ext_if first
+sysrc pf_enable=YES &amp;&amp; service pf start
+service satellite start</code></pre>
+  <p>Its log is <code>/var/log/satellite.log</code>.</p>
+  <p>On <strong>Linux</strong>, build with <code>GOOS=linux</code>, copy the
+    binary to <code>/usr/local/bin</code>, and run it under systemd as an
+    unprivileged user. Port 443 needs either
+    <code>setcap 'cap_net_bind_service=+ep'</code> on the binary, or a redirect
+    from 443 to an unprivileged port with <code>-port 443</code> so the
+    satellite still advertises the public one.</p>
+
+  <h2 id="invite">4. Invite a home</h2>
+  <p>One link per launchpad:</p>
+  <pre><code>docker compose exec satellite minstrel-satellite invite -label "Lake house"</code></pre>
+  <p>or, for a binary install,
+    <code>minstrel-satellite invite -data /var/db/satellite -label "Lake house"</code>.</p>
+  <p>Send the printed link to that home's owner, who pastes it into their
+    launchpad console under <em>Outside access &rarr; Satellite</em>. It works
+    once and is valid for a day. The link carries the satellite's key
+    fingerprint, so a launchpad cannot be sent to an impostor.</p>
+
+  <h2 id="limits">Limits and housekeeping</h2>
+  <p>For all homes or per home: <code>-rate 4Mbit</code> (top speed),
+    <code>-quota 100GB</code> (data per month at full speed) and
+    <code>-over-rate 1Mbit</code> (speed after that). In Docker these are
+    <code>SATELLITE_RATE</code>, <code>SATELLITE_QUOTA</code> and
+    <code>SATELLITE_OVER_RATE</code>.</p>
+  <p>At CD quality music needs about 1&nbsp;Mbit/s; a compressed quality in the
+    app's settings uses much less, which is worth telling the homes you invite.</p>
+  <p><code>minstrel-satellite homes</code> lists the homes and their use this
+    month, and <code>remove</code> drops one. All commands and options are in
+    the <a href="https://github.com/imush/minstrel-satellite#readme">README</a>.</p>
+
+  <p class="aside">Back up the data directory. It holds the relay's key, and
+    losing it means every home must be invited again.</p>
+</main>
+
+<footer class="dark">
+  <div class="wrap">
+    <span class="footer-brand"><svg viewBox="0 0 120 120" aria-hidden="true"><use href="#mark"/></svg>© 2026 Minstrel Player · BSD 3-Clause</span>
+    <span><a href="/">Home</a> · <a href="privacy">Privacy</a> · <a href="https://github.com/imush/minstrel-launchpad/issues">Contact</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
