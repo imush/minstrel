@@ -120,3 +120,6 @@ h3 .soon { margin-left: 8px; padding: 2px 8px; border-radius: 6px; background: #
   margin-top: 8px; font-size: 13px; line-height: 1.45;
   color: var(--ink-soft); text-align: center;
 }
+
+/* A sidelong remark: true, but not part of the main path. */
+.page .aside { color: var(--ink-soft); font-size: 15px; }

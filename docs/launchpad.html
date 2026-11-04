@@ -53,14 +53,47 @@
   <p>Give the machine a <strong>fixed address on your home network</strong> (a DHCP reservation on the router, or a static address outside the DHCP range): your router's port forwarding points at it.</p>
 
   <h2 id="install">2. Install</h2>
-  <p>Ready-made downloads come with the first release. Until then, install it one of these ways:</p>
-
   <h3>Docker (most NAS boxes)</h3>
-  <pre><code>docker build -t minstrel-launchpad https://github.com/imush/minstrel-launchpad.git
-docker run -d --name launchpad --network host --restart unless-stopped \
-  -v launchpad:/data minstrel-launchpad
+  <pre><code>docker run -d --name launchpad --network host --restart unless-stopped \
+  -v /srv/launchpad:/data imush/minstrel-launchpad:latest
 docker logs launchpad          # shows the console's setup link</code></pre>
-  <p>Host networking is required, so it can discover your media servers.</p>
+  <p>The image is built for amd64 and arm64 and carries ffmpeg, so compression
+    works straight away. Pin a version &mdash; <code>:0.3.1</code>, or
+    <code>:0.3</code> to follow its patches &mdash; if you would rather choose
+    when to update.</p>
+  <p><strong>Host networking is required.</strong> The launchpad finds media
+    servers with SSDP multicast, which does not cross a Docker bridge network;
+    on a bridge you get an empty server list and no explanation.</p>
+  <p><strong>Give <code>/data</code> a path you choose</strong>, as above. With
+    an unnamed volume, recreating the container &mdash; which is what updating
+    means in Docker &mdash; hands it a fresh empty one, and every paired device
+    silently stops working.</p>
+
+  <p class="aside">Building it yourself works too &mdash;
+    <code>docker build -t minstrel-launchpad https://github.com/imush/minstrel-launchpad.git</code>
+    &mdash; and is the only way on an architecture the published image doesn't
+    cover (armv6, armv7, mips, riscv64), or if you would rather not run a
+    binary someone else compiled.</p>
+
+  <h3>Synology</h3>
+  <p>Container Manager (DSM 7.2 and later, on models that support it) &rarr;
+    <em>Project</em> &rarr; <em>Create</em>, name it <code>launchpad</code>,
+    choose <em>Create docker-compose.yml</em> and paste:</p>
+  <pre><code>services:
+  launchpad:
+    image: imush/minstrel-launchpad:latest
+    container_name: launchpad
+    network_mode: host
+    volumes:
+      - /volume1/docker/launchpad:/data
+    restart: unless-stopped</code></pre>
+  <p>Then open the container's <em>Log</em> tab for the setup link. The
+    j-series and other value models cannot run Container Manager at all; on
+    those, a Raspberry Pi or any always-on computer on the same network does
+    the job instead.</p>
+
+  <h3>Binaries</h3>
+  <p>Built from source for now, as below. One static binary, no dependencies.</p>
 
   <h3>Linux (Raspberry Pi, home server)</h3>
   <p>With <a href="https://go.dev/dl/">Go</a> installed:</p>
@@ -94,7 +127,7 @@ brew install ffmpeg          # macOS</code></pre>
   <p>It arrives with a long tail of dependencies; that is normal, and any build that reads FLAC and writes AAC will do. Restart the launchpad afterwards, then look at the console's <strong>Compression</strong> card: it names the ffmpeg it found and its version, or says why there is none.</p>
   <p>If it says there is none although you installed one, the service's <code>PATH</code> is the usual reason &mdash; a service manager often hands down its own, leaving out <code>/usr/local/bin</code>. Either fix that or name the program:</p>
   <pre><code>minstrel-launchpad serve -ffmpeg /usr/local/bin/ffmpeg</code></pre>
-  <p><code>LAUNCHPAD_FFMPEG</code> does the same. In Docker, ffmpeg has to be inside the image, where you can't add it afterwards: the image built above carries none, so compression is off there until an image that includes it is published.</p>
+  <p><code>LAUNCHPAD_FFMPEG</code> does the same. None of this applies to Docker: ffmpeg has to be inside the image, where you cannot add it afterwards, so the published image ships with it.</p>
 
   <h2 id="console">3. Open the console</h2>
   <p>The launchpad's web console is at <code>http://<em>its address</em>:7444</code>, reachable from your home network only.</p>
@@ -214,7 +247,7 @@ service satellite start</code></pre>
     <li><strong>“Can't reach home” in the app</strong>: the Homes list shows each address tried and what happened. “No answer” on the outside address usually means the port forward or dynamic DNS isn't right; check with the browser test above.</li>
     <li><strong>Not reaching home through the satellite</strong>: if the phone was paired before the launchpad joined, it doesn't know the satellite yet. Open the app once at home, on the same Wi-Fi, and it picks the satellite up.</li>
     <li><strong>No media servers on the console</strong>: the launchpad isn't on the same network segment as the server, or multicast is blocked. In Docker use <code>--network host</code>; in a jail or VM use bridged networking. Or add the server's description URL by hand.</li>
-    <li><strong>The app's compressed quality makes no difference</strong>: the launchpad has no ffmpeg, so it sends the originals. The console's <strong>Compression</strong> card says whether it found one &mdash; see <a href="#ffmpeg">ffmpeg, for compression</a>.</li>
+    <li><strong>The app's compressed quality makes no difference</strong>: the launchpad has no ffmpeg, so it sends the originals. (Not a Docker problem &mdash; that image includes it.) The console's <strong>Compression</strong> card says whether it found one &mdash; see <a href="#ffmpeg">ffmpeg, for compression</a>.</li>
     <li><strong>Forgot the console password</strong>: run <code>minstrel-launchpad console</code> on the launchpad for a new setup link (add <code>-data</code> with its data directory if you set one, such as <code>-data /var/db/launchpad</code> in a FreeBSD jail, as the user it runs as).</li>
   </ul>
   <p>More detail, all options and the API are in the <a href="https://github.com/imush/minstrel-launchpad#readme">README</a>. Questions: <a href="https://github.com/imush/minstrel-launchpad/issues">GitHub issues</a>.</p>
