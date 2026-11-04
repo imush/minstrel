@@ -76,10 +76,11 @@ docker logs launchpad          # shows the console's setup link</code></pre>
     cover (armv6, armv7, mips, riscv64), or if you would rather not run a
     binary someone else compiled.</p>
 
-  <h3>Synology</h3>
-  <p>Container Manager (DSM 7.2 and later, on models that support it) &rarr;
-    <em>Project</em> &rarr; <em>Create</em>, name it <code>launchpad</code>,
-    choose <em>Create docker-compose.yml</em> and paste:</p>
+  <h3 id="nas">Synology, QNAP and other NAS boxes</h3>
+  <p>On Synology: Container Manager (DSM 7.2 and later, on models that support
+    it) &rarr; <em>Project</em> &rarr; <em>Create</em>, name it
+    <code>launchpad</code>, choose <em>Create docker-compose.yml</em> and
+    paste:</p>
   <pre><code>services:
   launchpad:
     image: imush/minstrel-launchpad:latest
@@ -92,6 +93,16 @@ docker logs launchpad          # shows the console's setup link</code></pre>
     j-series and other value models cannot run Container Manager at all; on
     those, a Raspberry Pi or any always-on computer on the same network does
     the job instead.</p>
+  <p>The same file works on any NAS that lets you paste one &mdash; QNAP's
+    Container Station, Asustor, TerraMaster, UGREEN, OpenMediaVault, TrueNAS
+    SCALE's custom app. Menus differ by vendor and version, but two things do
+    not: <strong>host networking must be on</strong>, or no media servers are
+    found, and <strong>the left-hand side of the volume must be a real share
+    on your NAS</strong>. Only that path changes &mdash;
+    <code>/volume1/docker/…</code> on Synology, <code>/share/Container/…</code>
+    on QNAP, <code>/mnt/user/appdata/…</code> on unRAID.</p>
+  <p>unRAID users have an easier route coming: the same image as a Community
+    Applications template, which fills all of this in for you.</p>
 
   <h3>Binaries</h3>
   <p>Built from source for now, as below. One static binary, no dependencies.</p>
