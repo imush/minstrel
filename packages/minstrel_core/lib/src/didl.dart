@@ -250,13 +250,24 @@ class DidlItem extends DidlObject {
 }
 
 /// Replaces the `<res>` elements of [itemXml] with a single one describing
-/// [r]. Only protocolInfo and duration are carried over: the rest (size,
-/// bitrate, sample rate) describes the server's own file, and would be
-/// wrong for a stream that reaches the player another way.
+/// [r], carrying over every attribute [r] has.
+///
+/// Dropping all but protocolInfo and duration was a mistake worth not
+/// repeating: a relayed track is the server's own file byte for byte, only
+/// fetched by another route, so its size, bitrate, sample rate, depth and
+/// channel count are all still true — and players in the HEOS family
+/// decide whether they can decode a stream from exactly those, refusing it
+/// outright when they are missing.
 String itemXmlWithResource(String itemXml, DidlResource r) {
   final d = r.duration;
+  String attr(String name, Object? value) => value == null ? '' : ' $name="$value"';
   final res = '<res protocolInfo="${xmlEscape(r.protocolInfo.toString())}"'
       '${d != null && d > Duration.zero ? ' duration="${formatUpnpResDuration(d)}"' : ''}'
+      '${attr('size', r.size)}'
+      '${attr('bitrate', r.bitrate)}'
+      '${attr('sampleFrequency', r.sampleFrequency)}'
+      '${attr('bitsPerSample', r.bitsPerSample)}'
+      '${attr('nrAudioChannels', r.channels)}'
       '>${xmlEscape(r.uri.toString())}</res>';
   final stripped = itemXml.replaceAll(RegExp(r'<res\b[^>]*?(/>|>.*?</res>)', dotAll: true), '');
   final end = stripped.lastIndexOf('</item>');

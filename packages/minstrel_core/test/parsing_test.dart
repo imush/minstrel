@@ -85,6 +85,14 @@ void main() {
       expect(sent.resources, hasLength(1), reason: 'the loopback one is gone');
       expect(sent.resources.single.mimeType, 'audio/flac', reason: 'same format, other route');
       expect(sent.resources.single.duration, original.duration);
+      // The relayed stream is the same file, so everything a player uses to
+      // decide whether it can decode it has to survive the rewrite. HEOS
+      // players refuse a <res> that has lost them.
+      expect(sent.resources.single.size, original.size);
+      expect(sent.resources.single.bitrate, original.bitrate);
+      expect(sent.resources.single.sampleFrequency, original.sampleFrequency);
+      expect(sent.resources.single.bitsPerSample, original.bitsPerSample);
+      expect(sent.resources.single.channels, original.channels);
       // Everything else is untouched.
       expect(sent.composer, 'Alban Berg');
       expect(sent.title, item.title);

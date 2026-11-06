@@ -273,24 +273,33 @@ Future<bool> playTracks(BuildContext context, List<DidlItem> items, int start) a
   }
   // Tracks from a paired home need this phone to pass them on; ask, then
   // start again with the whole request so they fall into place in order.
-  if (player.needRelay.isNotEmpty && context.mounted && await offerRelay(context)) {
-    try {
-      await player.playItems(items, start);
-    } on Object catch (e) {
-      if (!isConnectionError(e)) rethrow;
+  var offer = RelayOffer.declined;
+  if (player.needRelay.isNotEmpty && context.mounted) {
+    offer = await offerRelay(context);
+    if (offer == RelayOffer.allowed) {
+      try {
+        await player.playItems(items, start);
+      } on Object catch (e) {
+        if (!isConnectionError(e)) rethrow;
+      }
     }
   }
-  reportLeftOut(messenger, player);
+  reportLeftOut(messenger, player, offer);
   return true;
 }
 
-/// Says what was left out of the queue and why. Two different reasons, and
-/// the one that sounds like the player's fault usually isn't.
-void reportLeftOut(ScaffoldMessengerState messenger, MinstrelAudioHandler player) {
+/// Says what was left out of the queue and why. Three different reasons,
+/// and the one that sounds like the player's fault usually isn't. Agreeing
+/// to relay and it not working must not read the same as saying no.
+void reportLeftOut(
+    ScaffoldMessengerState messenger, MinstrelAudioHandler player, RelayOffer offer) {
   final name = player.output.name;
   final notes = [
     if (player.needRelay.isNotEmpty)
-      '${player.needRelay.length} track(s) not played: $name can\'t reach your home library',
+      offer == RelayOffer.unavailable
+          ? 'This device has no address on this network that $name can fetch from, '
+              'so your home library can\'t be passed on from here'
+          : '${player.needRelay.length} track(s) not played: $name can\'t reach your home library',
     if (player.skipped.isNotEmpty)
       '${player.skipped.length} track(s) skipped: $name can\'t play them',
   ];

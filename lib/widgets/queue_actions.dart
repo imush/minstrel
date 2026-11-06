@@ -93,7 +93,7 @@ Future<void> runQueueAction(
     // the other two already added what they could, so only the tracks left
     // out go in, or they would go in twice.
     final pending = player.needRelay;
-    if (pending.isNotEmpty && context.mounted && await offerRelay(context)) {
+    if (pending.isNotEmpty && context.mounted && await offerRelay(context) == RelayOffer.allowed) {
       added += switch (action) {
         QueueAction.playNow => await player.playItems(items, 0).then((_) => player.entries.length - added),
         QueueAction.playNext => await player.playNext(pending),
