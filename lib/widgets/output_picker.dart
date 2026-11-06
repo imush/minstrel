@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:minstrel_core/minstrel_core.dart';
 
 import '../app_services.dart';
 
@@ -15,10 +16,30 @@ Future<void> showOutputPicker(BuildContext context) async {
       stream: app.registry.changes,
       builder: (context, _) {
         final current = app.player.output.id;
+        // Away from home, a player here can't fetch the home library by
+        // itself. Said plainly on the row rather than asked about up front:
+        // choosing a player is not yet a reason to want this.
+        final relayed = app.relay.allowed;
+        final away = app.homes.homes.any((h) {
+          final s = app.homes.status(h);
+          return s.state == HomeState.connected && !s.atHome;
+        });
+        String? noteFor(MediaRenderer r) {
+          final notes = [
+            // While the music passes through this phone the renderer can't
+            // carry on without it, so that promise is left off.
+            if (r.holdsQueue && !relayed) 'Keeps playing the queue on its own',
+            if (relayed)
+              'Home music passes through this phone'
+            else if (away)
+              'Home music needs this phone to pass it on',
+          ];
+          return notes.isEmpty ? null : notes.join(' · ');
+        }
+
         final options = [
           ('local', 'This device', Icons.smartphone, null),
-          for (final r in app.registry.renderers)
-            (r.udn, r.name, Icons.speaker, r.holdsQueue ? 'Keeps playing the queue on its own' : null),
+          for (final r in app.registry.renderers) (r.udn, r.name, Icons.speaker, noteFor(r)),
         ];
         return SafeArea(
           child: Column(

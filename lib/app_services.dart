@@ -16,6 +16,7 @@ import 'car/carplay.dart';
 import 'homes.dart';
 import 'playback/audio_handler.dart';
 import 'playback/output.dart';
+import 'playback/relay.dart';
 import 'playback/renderer_output.dart';
 
 /// App-wide singletons, created once in main().
@@ -29,7 +30,12 @@ class AppServices {
   final Homes homes;
   final CarLibrary car;
 
-  AppServices._(this.http_, this.registry, this.player, this.prefs, this.homes, this.car);
+  /// Permission for players on the network the phone is on to fetch home
+  /// tracks through it.
+  final Relay relay;
+
+  AppServices._(this.http_, this.registry, this.player, this.prefs, this.homes, this.car)
+      : relay = Relay(homes.proxy);
 
   static const _manualKey = 'manualDevices';
   static const _rememberedKey = 'rememberedDevices';
@@ -71,6 +77,7 @@ class AppServices {
     player.attachCar(car);
     instance = AppServices._(client, registry, player, prefs, await Homes.start(registry), car);
     instance.homes.proxy.compression = prefs.getString(_compressionKey);
+    player.relay = instance.relay;
     if (Platform.isIOS) unawaited(CarPlayBridge(car).start());
     // Coming back to the app may mean a new network: home Wi-Fi, cellular.
     AppLifecycleListener(onResume: () {
@@ -78,6 +85,9 @@ class AppServices {
       // The network may have changed meanwhile: on arriving home, use the
       // home address rather than going out and back in.
       instance.homes.proxy.recheck();
+      // Permission to relay belongs to one network; coming back may be on
+      // another.
+      unawaited(instance.relay.recheck());
       unawaited(instance.homes.refreshAll());
     });
     // The queue first: a car may be asking for it while discovery waits
@@ -124,6 +134,8 @@ class AppServices {
   void _watchOutput() {
     Timer? grace;
     registry.changes.listen((_) {
+      // Discovery notices the interfaces moving before anything else does.
+      unawaited(relay.recheck());
       final out = player.output;
       if (out.isLocal || registry.renderer(out.id) != null) {
         grace?.cancel();

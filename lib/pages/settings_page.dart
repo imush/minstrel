@@ -18,7 +18,8 @@ class _SettingsPageState extends State<SettingsPage> {
   /// Which homes can compress: it needs ffmpeg on their launchpad.
   String _compressionNote() {
     const what = 'Music from home played on this phone over mobile data or elsewhere. '
-        'Players and music at home always get the original.';
+        'Music at home, and anything passed on to a player on this network, '
+        'always gets the original.';
     final homes = _app.homes.homes;
     if (homes.isEmpty) return what;
     final able = homes.where((h) => _app.homes.proxy.canCompress(h.id)).map((h) => h.name).toList();
@@ -57,6 +58,22 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const Divider(),
           const ListTile(title: Text('Away from home'), dense: true),
+          // Not a saved preference: it lasts while the phone is on the
+          // network it was given on. Shown only where it means something,
+          // and the subtitle has to say it doesn't stick, or it reads as a
+          // bug when it comes back off.
+          if (_app.relay.allowed)
+            SwitchListTile(
+              value: true,
+              title: const Text('Play home music on players here'),
+              subtitle: Text('On for this network (${_app.relay.network}). '
+                  'Anyone on it can reach the tracks you have queued. '
+                  'Turns off by itself when you leave.'),
+              onChanged: (_) async {
+                await _app.relay.revoke();
+                if (mounted) setState(() {});
+              },
+            ),
           ListTile(
             subtitle: Text(_compressionNote()),
             dense: true,

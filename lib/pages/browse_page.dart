@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:minstrel_core/minstrel_core.dart';
 
 import '../app_services.dart';
+import '../playback/audio_handler.dart';
 import '../widgets/cover_art.dart';
 import '../widgets/mini_player.dart';
 import '../widgets/output_button.dart';
 import '../widgets/queue_actions.dart';
+import '../widgets/relay_prompt.dart';
 import '../widgets/track_info.dart';
 import 'search_page.dart';
 
@@ -269,12 +271,30 @@ Future<bool> playTracks(BuildContext context, List<DidlItem> items, int start) a
     ));
     return false;
   }
-  if (player.skipped.isNotEmpty) {
-    messenger.showSnackBar(SnackBar(
-      content: Text('${player.skipped.length} track(s) skipped: ${player.output.name} can\'t play them'),
-    ));
+  // Tracks from a paired home need this phone to pass them on; ask, then
+  // start again with the whole request so they fall into place in order.
+  if (player.needRelay.isNotEmpty && context.mounted && await offerRelay(context)) {
+    try {
+      await player.playItems(items, start);
+    } on Object catch (e) {
+      if (!isConnectionError(e)) rethrow;
+    }
   }
+  reportLeftOut(messenger, player);
   return true;
+}
+
+/// Says what was left out of the queue and why. Two different reasons, and
+/// the one that sounds like the player's fault usually isn't.
+void reportLeftOut(ScaffoldMessengerState messenger, MinstrelAudioHandler player) {
+  final name = player.output.name;
+  final notes = [
+    if (player.needRelay.isNotEmpty)
+      '${player.needRelay.length} track(s) not played: $name can\'t reach your home library',
+    if (player.skipped.isNotEmpty)
+      '${player.skipped.length} track(s) skipped: $name can\'t play them',
+  ];
+  if (notes.isNotEmpty) messenger.showSnackBar(SnackBar(content: Text(notes.join('. '))));
 }
 
 /// Opens a search of the whole library, on servers that can search.

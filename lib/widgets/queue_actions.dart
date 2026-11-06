@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:minstrel_core/minstrel_core.dart';
 
 import '../app_services.dart';
+import 'relay_prompt.dart';
 
 enum QueueAction { playNow, playNext, addToQueue }
 
@@ -82,13 +83,25 @@ Future<void> runQueueAction(
       messenger.showSnackBar(const SnackBar(content: Text('No tracks found')));
       return;
     }
-    final added = switch (action) {
+    var added = switch (action) {
       QueueAction.playNow => await player.playItems(items, 0).then((_) => player.entries.length),
       QueueAction.playNext => await player.playNext(items),
       QueueAction.addToQueue => await player.addToQueue(items),
     };
-    final skipped = player.skipped.length;
+    // Tracks from a paired home only reach a renderer if this phone passes
+    // them on. Play now replaced the queue, so it can simply run again;
+    // the other two already added what they could, so only the tracks left
+    // out go in, or they would go in twice.
+    final pending = player.needRelay;
+    if (pending.isNotEmpty && context.mounted && await offerRelay(context)) {
+      added += switch (action) {
+        QueueAction.playNow => await player.playItems(items, 0).then((_) => player.entries.length - added),
+        QueueAction.playNext => await player.playNext(pending),
+        QueueAction.addToQueue => await player.addToQueue(pending),
+      };
+    }
     final what = added == 1 ? '1 track' : '$added tracks';
+    final name = player.output.name;
     messenger.showSnackBar(SnackBar(
       content: Text([
         switch (action) {
@@ -96,7 +109,9 @@ Future<void> runQueueAction(
           QueueAction.playNext => 'Playing $what next',
           QueueAction.addToQueue => 'Added $what to the queue',
         },
-        if (skipped > 0) '$skipped skipped: ${player.output.name} can\'t play them',
+        if (player.needRelay.isNotEmpty)
+          '${player.needRelay.length} left out: $name can\'t reach your home library',
+        if (player.skipped.isNotEmpty) '${player.skipped.length} skipped: $name can\'t play them',
       ].join('. ')),
     ));
   } on Object catch (e) {

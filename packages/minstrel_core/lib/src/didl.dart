@@ -239,7 +239,28 @@ class DidlItem extends DidlObject {
 
   /// DIDL-Lite document describing just this item, for
   /// SetAVTransportURI / SetNextAVTransportURI metadata.
-  String toDidlLite() => wrapDidlLite(rawXml);
+  ///
+  /// [resource] replaces the item's own `<res>` elements, for when the URL
+  /// the player is given is not the one the server advertised: a track
+  /// relayed through this phone, or a queue restored from a snapshot.
+  /// Players such as HEOS ones read the `<res>` in the metadata rather than
+  /// the URI they were handed, so the two have to agree.
+  String toDidlLite({DidlResource? resource}) =>
+      wrapDidlLite(resource == null ? rawXml : itemXmlWithResource(rawXml, resource));
+}
+
+/// Replaces the `<res>` elements of [itemXml] with a single one describing
+/// [r]. Only protocolInfo and duration are carried over: the rest (size,
+/// bitrate, sample rate) describes the server's own file, and would be
+/// wrong for a stream that reaches the player another way.
+String itemXmlWithResource(String itemXml, DidlResource r) {
+  final d = r.duration;
+  final res = '<res protocolInfo="${xmlEscape(r.protocolInfo.toString())}"'
+      '${d != null && d > Duration.zero ? ' duration="${formatUpnpResDuration(d)}"' : ''}'
+      '>${xmlEscape(r.uri.toString())}</res>';
+  final stripped = itemXml.replaceAll(RegExp(r'<res\b[^>]*?(/>|>.*?</res>)', dotAll: true), '');
+  final end = stripped.lastIndexOf('</item>');
+  return end < 0 ? stripped : '${stripped.substring(0, end)}$res${stripped.substring(end)}';
 }
 
 const _didlOpen =

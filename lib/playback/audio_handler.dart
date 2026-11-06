@@ -11,6 +11,7 @@ import '../car/car_services.dart';
 import 'keep_alive.dart';
 import 'local_output.dart';
 import 'output.dart';
+import 'relay.dart';
 import 'renderer_output.dart';
 import 'system_volume.dart';
 
@@ -32,8 +33,19 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
   List<QueueEntry> _entries = const [];
   QualityPreference preference = QualityPreference.best;
 
-  /// Items from the last request that no resource could be found for.
+  /// Items from the last request in no format the output can play.
   List<DidlItem> skipped = const [];
+
+  /// Items from the last request that were left out because they live in a
+  /// paired home and the output is a renderer, which can only fetch them if
+  /// this phone passes them on — and that isn't allowed on this network.
+  /// Asking [relay] and queueing again is what clears this.
+  List<DidlItem> needRelay = const [];
+
+  /// Set once the home proxy exists. Without it, or without the user's
+  /// permission for the network the phone is on, home tracks can't go to a
+  /// renderer at all.
+  Relay? relay;
 
   /// A queue that's shown but not yet loaded into the output: restored
   /// after a restart, or kept when the renderer had moved on to something
@@ -181,11 +193,11 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
     _output = localOutput;
     outputListenable.value = localOutput;
     _listen();
-    final (entries, newIndex, skippedNow) =
-        _resolve(items, index < 0 ? 0 : index, await localOutput.sinks(), local: true);
-    skipped = skippedNow;
-    _setEntries(entries);
-    _pendingIndex = entries.isEmpty ? -1 : newIndex;
+    final r = _resolve(items, index < 0 ? 0 : index, await localOutput.sinks(), local: true);
+    skipped = r.unplayable;
+    needRelay = r.needRelay;
+    _setEntries(r.entries);
+    _pendingIndex = r.entries.isEmpty ? -1 : r.index;
     _pendingPosition = position;
     _publish(localOutput.state);
   }
@@ -224,17 +236,17 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
   /// Plays [items] starting at [start], choosing for each the resource the
   /// current output can play. Items with none are left out of the queue.
   Future<void> playItems(List<DidlItem> items, int start) async {
-    final (entries, index, skippedNow) =
-        _resolve(items, start, await _output.sinks(), local: _output.isLocal);
-    skipped = skippedNow;
+    final r = _resolve(items, start, await _output.sinks(), local: _output.isLocal);
+    skipped = r.unplayable;
+    needRelay = r.needRelay;
     _pendingIndex = -1;
     _restoredFrom = null;
-    _setEntries(entries);
-    if (entries.isEmpty) {
+    _setEntries(r.entries);
+    if (r.entries.isEmpty) {
       await _output.stop();
       return;
     }
-    await _output.load(entries, index);
+    await _output.load(r.entries, r.index);
   }
 
   /// Inserts [items] right after the current track. Returns how many were
@@ -250,17 +262,18 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
       await playItems(items, 0);
       return _entries.length;
     }
-    final (entries, _, left) = _resolve(items, 0, await _output.sinks(), local: _output.isLocal);
-    skipped = left;
-    if (entries.isEmpty) return 0;
+    final r = _resolve(items, 0, await _output.sinks(), local: _output.isLocal);
+    skipped = r.unplayable;
+    needRelay = r.needRelay;
+    if (r.entries.isEmpty) return 0;
     at = at.clamp(0, _entries.length);
-    _setEntries([..._entries]..insertAll(at, entries));
+    _setEntries([..._entries]..insertAll(at, r.entries));
     if (_loaded) {
-      await _output.insert(at, entries);
+      await _output.insert(at, r.entries);
     } else if (at <= _pendingIndex) {
-      _pendingIndex += entries.length;
+      _pendingIndex += r.entries.length;
     }
-    return entries.length;
+    return r.entries.length;
   }
 
   @override
@@ -299,29 +312,43 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
     await super.stop();
   }
 
-  /// Picks a resource for each item; returns the playable entries, where
-  /// [start] landed among them, and the items left out: those in formats
-  /// the output can't play, and, on a renderer, tracks from a paired home,
-  /// which only this device can reach.
-  (List<QueueEntry>, int, List<DidlItem>) _resolve(
+  /// Picks a resource for each item, and for a renderer a URL it can
+  /// actually fetch.
+  _Resolved _resolve(
       List<DidlItem> items, int start, List<ProtocolInfo> sinks, {required bool local}) {
     final entries = <QueueEntry>[];
-    final left = <DidlItem>[];
+    final unplayable = <DidlItem>[];
+    final needRelay = <DidlItem>[];
     var index = 0;
     for (var i = 0; i < items.length; i++) {
       final res = ResourceSelector.select(items[i], sinks, preference: preference);
-      if (res == null || (!local && HomeProxy.isHomeUrl(res.uri))) {
-        left.add(items[i]);
+      if (res == null) {
+        unplayable.add(items[i]);
         continue;
       }
+      var chosen = res;
+      if (!local && HomeProxy.isHomeUrl(res.uri)) {
+        // A home URL is loopback: it means this phone, so to a renderer it
+        // would mean the renderer itself. It needs one this phone serves on
+        // the local network, which takes the user's permission.
+        final via = relay?.urlFor(res.uri);
+        if (via == null) {
+          needRelay.add(items[i]);
+          continue;
+        }
+        chosen = res.withUri(via);
+      }
       if (i <= start) index = entries.length;
-      entries.add(QueueEntry(items[i], res));
+      entries.add(QueueEntry(items[i], chosen));
     }
-    return (entries, index, left);
+    return _Resolved(entries, index, unplayable, needRelay);
   }
 
   void _setEntries(List<QueueEntry> entries) {
     _entries = entries;
+    // The relay serves the queue and nothing else, so a URL that leaks off
+    // this network is worth only what is playing.
+    relay?.setQueue([for (final e in entries) e.resource.uri]);
     queue.add([for (final e in entries) _mediaItem(e)]);
     _saveSoon();
   }
@@ -366,16 +393,17 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
     }
     if (items.isEmpty) return;
 
-    final (entries, newIndex, skippedNow) = _resolve(items, index, await next.sinks(), local: next.isLocal);
-    skipped = skippedNow;
-    _setEntries(entries);
-    if (entries.isEmpty) return;
+    final r = _resolve(items, index, await next.sinks(), local: next.isLocal);
+    skipped = r.unplayable;
+    needRelay = r.needRelay;
+    _setEntries(r.entries);
+    if (r.entries.isEmpty) return;
     if (wasPlaying) {
       _pendingIndex = -1;
-      await next.load(entries, newIndex, position: position);
+      await next.load(r.entries, r.index, position: position);
     } else {
       // Paused or not yet started: move it over, start when asked.
-      _pendingIndex = newIndex;
+      _pendingIndex = r.index;
       _pendingPosition = position;
       _publish(next.state);
     }
@@ -584,4 +612,16 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
       await _output.skipTo(s.index - 1);
     }
   }
+}
+
+/// What [MinstrelAudioHandler._resolve] made of a request: the playable
+/// entries, where the requested start landed among them, and the two
+/// separate reasons an item didn't make it.
+class _Resolved {
+  final List<QueueEntry> entries;
+  final int index;
+  final List<DidlItem> unplayable;
+  final List<DidlItem> needRelay;
+
+  const _Resolved(this.entries, this.index, this.unplayable, this.needRelay);
 }

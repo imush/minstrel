@@ -117,26 +117,16 @@ QueueEntry queueEntryFromMetadata(Uri uri, String metadata) {
       genre: i?.genre,
       date: i?.date,
       albumArt: i?.albumArt,
-      rawXml: _withResource(
-          i?.rawXml ?? '<item id="" parentID=""><dc:title>${xmlEscape(_titleFromUri(uri))}</dc:title></item>',
-          complete ? null : resource),
+      rawXml: (() {
+        final xml = i?.rawXml ??
+            '<item id="" parentID=""><dc:title>${xmlEscape(_titleFromUri(uri))}</dc:title></item>';
+        return complete ? xml : itemXmlWithResource(xml, resource);
+      })(),
       resources: (i?.resources.isNotEmpty ?? false) ? i!.resources : [resource],
       trackNumber: i?.trackNumber,
     ),
     resource,
   );
-}
-
-/// Replaces the `<res>` elements of [itemXml] with [r], if given.
-String _withResource(String itemXml, DidlResource? r) {
-  if (r == null) return itemXml;
-  final d = r.duration;
-  final res = '<res protocolInfo="${xmlEscape(r.protocolInfo.toString())}"'
-      '${d != null && d > Duration.zero ? ' duration="${formatUpnpDuration(d)}"' : ''}'
-      '>${xmlEscape(r.uri.toString())}</res>';
-  final stripped = itemXml.replaceAll(RegExp(r'<res\b[^>]*?(/>|>.*?</res>)', dotAll: true), '');
-  final end = stripped.lastIndexOf('</item>');
-  return end < 0 ? stripped : '${stripped.substring(0, end)}$res${stripped.substring(end)}';
 }
 
 const _mimeByExtension = {

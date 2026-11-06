@@ -327,6 +327,119 @@ void main() {
       expect('$e', contains(tried[1]), reason: 'shown with the message');
     });
 
+    group('relaying to a player on the LAN', () {
+      late Home home;
+      late Uri base;
+      late HttpClient client;
+
+      /// Loopback stands in for a LAN address: the relay listener's own
+      /// checks are what matters, not which interface it is on.
+      setUp(() async {
+        home = await pairWithLaunchpad(invitation(), deviceName: 'p');
+        proxy.add(home);
+        await proxy.info(home.id);
+        base = (await proxy.openRelay(InternetAddress.loopbackIPv4))!;
+        client = HttpClient();
+      });
+
+      tearDown(() => client.close(force: true));
+
+      Uri homeUrl(String path) => Uri.parse('http://127.0.0.1:${proxy.port}/h/${home.id}$path');
+      Uri track([String name = 'a.flac']) => homeUrl('/u/192.168.1.9:9790/$name');
+
+      Future<HttpClientResponse> get(Uri u) async => (await client.getUrl(u)).close();
+
+      Future<int> status(Uri u) async {
+        final r = await get(u);
+        await r.drain<void>();
+        return r.statusCode;
+      }
+
+      test('serves a queued track to whoever asks, with the token', () async {
+        final relayed = proxy.relayFor(track())!;
+        expect(HomeProxy.isRelayUrl(relayed), isTrue);
+        expect(relayed.toString(), startsWith(base.toString()));
+        proxy.allowRelay([relayed]);
+
+        final r = await get(relayed);
+        expect(r.statusCode, 200);
+        expect(r.headers.contentType.toString(), 'audio/flac');
+        expect(await r.fold<int>(0, (n, b) => n + b.length), lp.audio.length);
+      });
+
+      test('a wrong token gets the same bare 404 as nothing at all', () async {
+        final relayed = proxy.relayFor(track())!;
+        proxy.allowRelay([relayed]);
+        final wrong = Uri.parse(relayed.toString().replaceFirst(RegExp('/r/[^/]+/'), '/r/notthetoken/'));
+        expect(await status(wrong), 404);
+      });
+
+      test('serves only what is queued', () async {
+        proxy.allowRelay([proxy.relayFor(track())!]);
+        expect(await status(proxy.relayFor(track('c.flac'))!), 404,
+            reason: 'a track in the library but not in the queue');
+        expect(await status(proxy.relayFor(homeUrl('/api/info'))!), 404,
+            reason: 'the launchpad API is not the renderer business');
+      });
+
+      test('follows the queue as it changes', () async {
+        proxy.allowRelay([proxy.relayFor(track())!]);
+        expect(await status(proxy.relayFor(track())!), 200);
+        proxy.allowRelay([proxy.relayFor(track('c.flac'))!]);
+        expect(await status(proxy.relayFor(track())!), 404, reason: 'no longer queued');
+      });
+
+      test('reads only: no writes from the network', () async {
+        final relayed = proxy.relayFor(track())!;
+        proxy.allowRelay([relayed]);
+        final r = await (await client.postUrl(relayed)).close();
+        await r.drain<void>();
+        expect(r.statusCode, 405);
+      });
+
+      test('each session gets its own token', () async {
+        final again = (await proxy.openRelay(InternetAddress.loopbackIPv4))!;
+        expect(again.pathSegments[1], isNot(base.pathSegments[1]));
+      });
+
+      test('a closed relay hands out no more URLs', () async {
+        await proxy.closeRelay();
+        expect(proxy.relaying, isFalse);
+        expect(proxy.relayFor(track()), isNull);
+      });
+
+      test('never compresses for a player, only for this device', () async {
+        proxy.compression = 'aac-192';
+        final relayed = proxy.relayFor(track())!;
+        proxy.allowRelay([relayed]);
+        await (await get(relayed)).drain<void>();
+        expect(lp.requests.last.headers.value('x-minstrel-transcode'), isNull,
+            reason: 'the metadata the player got says FLAC; AAC under that label is rejected');
+        await (await get(track())).drain<void>();
+        expect(lp.requests.last.headers.value('x-minstrel-transcode'), 'aac-192');
+      });
+
+      test('a saved relay URL comes back as a loopback one', () {
+        final relayed = proxy.relayFor(track())!;
+        expect(proxy.rehome(relayed), track(), reason: 'its token and address are long gone');
+      });
+    });
+
+    test('picks this device\'s address on the player\'s network', () {
+      final wifi = InternetAddress('192.168.1.12');
+      final cellular = InternetAddress('10.172.44.8');
+      final vpn = InternetAddress('100.64.3.9');
+      final player = InternetAddress('192.168.1.178');
+      expect(addressNearest(player, [cellular, wifi, vpn]), wifi);
+      // A bigger LAN than /24: still the right side.
+      expect(addressNearest(InternetAddress('192.168.9.4'), [cellular, wifi]), wifi);
+      // Nothing near it at all: better to say so than to offer an address
+      // the player can't reach.
+      expect(addressNearest(InternetAddress('203.0.113.5'), [cellular, wifi, vpn]), isNull);
+      expect(addressNearest(player, [InternetAddress.loopbackIPv4]), isNull);
+      expect(addressNearest(InternetAddress('::1'), [wifi]), isNull);
+    });
+
     test('moves saved URLs to the current port', () {
       final old = Uri.parse('http://127.0.0.1:1234/h/abc/u/192.168.1.9:9790/a.flac');
       expect(proxy.rehome(old).port, proxy.port);

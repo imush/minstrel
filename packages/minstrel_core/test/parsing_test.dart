@@ -71,6 +71,34 @@ void main() {
       expect(again.resources.single.uri, item.resources.single.uri);
     });
 
+    test('metadata for a relayed track names the URL the player was given', () {
+      final item = parseDidlLite(didlFromEnvelope(fixture('minimserver-browse-items.xml')))
+          .whereType<DidlItem>()
+          .first;
+      final original = item.resources.single;
+      final relay = Uri.parse('http://192.168.7.22:51000/r/tok/h/abc/u/192.168.1.9:9790/a.flac');
+      final entry = QueueEntry(item, original.withUri(relay));
+      final sent = parseDidlLite(entry.didl).single as DidlItem;
+      // The URI and the metadata have to agree: players such as HEOS ones
+      // read the <res> rather than what SetAVTransportURI handed them.
+      expect(sent.resources.single.uri, relay);
+      expect(sent.resources, hasLength(1), reason: 'the loopback one is gone');
+      expect(sent.resources.single.mimeType, 'audio/flac', reason: 'same format, other route');
+      expect(sent.resources.single.duration, original.duration);
+      // Everything else is untouched.
+      expect(sent.composer, 'Alban Berg');
+      expect(sent.title, item.title);
+      expect(sent.trackNumber, 6);
+    });
+
+    test('metadata for a track the player fetches itself is passed through', () {
+      final item = parseDidlLite(didlFromEnvelope(fixture('minimserver-browse-items.xml')))
+          .whereType<DidlItem>()
+          .first;
+      final entry = QueueEntry(item, item.resources.single);
+      expect(entry.didl, item.toDidlLite(), reason: 'no rewriting where none is needed');
+    });
+
     test('tags without a field of their own are kept for display', () {
       const xml = '<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" '
           'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/">'

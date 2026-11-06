@@ -364,7 +364,7 @@ class OpenHomeBackend implements PlaylistBackend {
   Future<void> clear() => playlist.deleteAll();
   @override
   Future<int> insert(int afterId, QueueEntry e) =>
-      playlist.insert(afterId, e.resource.uri, e.item.toDidlLite());
+      playlist.insert(afterId, e.resource.uri, e.didl);
   @override
   Future<void> remove(int id) => playlist.deleteId(id);
   @override
@@ -441,7 +441,7 @@ class PlaylistExtensionBackend implements PlaylistBackend {
   Future<void> clear() => list.deleteAll();
   @override
   Future<int> insert(int afterId, QueueEntry e) =>
-      list.insert(afterId, e.resource.uri, e.item.toDidlLite());
+      list.insert(afterId, e.resource.uri, e.didl);
   @override
   Future<void> remove(int id) => list.delete(id);
   @override

@@ -15,6 +15,17 @@ Duration? parseUpnpDuration(String? s) {
   return Duration(microseconds: (seconds * 1000000).round());
 }
 
+/// Formats as `H:MM:SS.mmm` for a `<res duration>` attribute: servers
+/// commonly give milliseconds there, and a player may show the track length
+/// from it, so dropping them loses something. Seek targets use
+/// [formatUpnpDuration] instead — whole seconds, which every renderer
+/// accepts.
+String formatUpnpResDuration(Duration d) {
+  final ms = d.inMilliseconds.remainder(1000);
+  final base = formatUpnpDuration(d);
+  return ms == 0 ? base : '$base.${ms.toString().padLeft(3, '0')}';
+}
+
 /// Formats as `H:MM:SS`, the form AVTransport Seek(REL_TIME) expects.
 String formatUpnpDuration(Duration d) {
   final h = d.inHours;

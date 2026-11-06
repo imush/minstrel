@@ -189,7 +189,7 @@ class AvTransportQueue implements RendererQueue {
       _nextQueued = null;
       _sawPlaying = false;
       final e = _queue[i];
-      await transport.setUri(e.resource.uri, e.item.toDidlLite());
+      await transport.setUri(e.resource.uri, e.didl);
       await transport.play();
       _emit(_last.copyWith(index: i, position: Duration.zero, detached: false));
       await _queueNext();
@@ -206,7 +206,7 @@ class AvTransportQueue implements RendererQueue {
     try {
       if (n < _queue.length) {
         final e = _queue[n];
-        await transport.setNextUri(e.resource.uri, e.item.toDidlLite());
+        await transport.setNextUri(e.resource.uri, e.didl);
       } else if (_nextQueued != null) {
         await transport.setNextUri(null, '');
       }

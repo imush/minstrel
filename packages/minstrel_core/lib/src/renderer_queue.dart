@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'didl.dart';
+import 'home_proxy.dart';
 import 'services.dart';
 
 /// A queued track with the resource chosen for the current output.
@@ -9,6 +10,15 @@ class QueueEntry {
   final DidlResource resource;
 
   const QueueEntry(this.item, this.resource);
+
+  /// The metadata to send the renderer along with [resource]'s URL.
+  ///
+  /// Normally the server's own metadata, verbatim. For a track relayed
+  /// through this phone its `<res>` names a loopback URL the renderer can't
+  /// fetch, and players that trust the metadata over the URI they were
+  /// handed would fail, so that one element is replaced.
+  String get didl =>
+      item.toDidlLite(resource: HomeProxy.isRelayUrl(resource.uri) ? resource : null);
 }
 
 class RendererStatus {
