@@ -20,7 +20,13 @@ class HomeStatus {
   /// Connected through a satellite rather than directly.
   final bool viaSatellite;
 
-  const HomeStatus(this.state, {this.address, this.problem, this.tried = const [], this.viaSatellite = false});
+  /// Connected over the home network rather than from outside. Measured
+  /// when the address is chosen (see [isLocalAddress]), not read off the
+  /// address: an IPv6 one looks the same from either side.
+  final bool atHome;
+
+  const HomeStatus(this.state,
+      {this.address, this.problem, this.tried = const [], this.viaSatellite = false, this.atHome = false});
 
   /// Whether the address in use is IPv6. Written `[host]:port`, so the
   /// brackets come off before parsing.
@@ -30,14 +36,47 @@ class HomeStatus {
     return ip != null && ip.type == InternetAddressType.IPv6;
   }
 
-  /// Connected over the home network rather than from outside.
-  bool get atHome {
-    final host = address == null ? null : Uri.tryParse('https://$address')?.host;
-    final ip = host == null ? null : InternetAddress.tryParse(host);
-    if (ip == null || ip.type != InternetAddressType.IPv4) return false;
-    final b = ip.rawAddress;
+}
+
+/// Whether `host:port` [address] is on a network this device is itself on.
+///
+/// For IPv4 the private ranges answer it outright. IPv6 has no such
+/// shortcut: a global address answers the same from the sofa as from the
+/// other side of the world, which is the point of it. So the only honest
+/// test is whether this device holds an address in the same /64.
+///
+/// Guessing wrong the cautious way — saying "outside" when at home — is not
+/// free: it labels the home wrongly, and it asks the launchpad to compress
+/// music that should be sent untouched over the LAN.
+Future<bool> isLocalAddress(String address) async {
+  final host = Uri.tryParse('https://$address')?.host;
+  final ip = host == null ? null : InternetAddress.tryParse(host);
+  if (ip == null) return false;
+  final b = ip.rawAddress;
+  if (ip.type == InternetAddressType.IPv4) {
     return b[0] == 10 || (b[0] == 172 && b[1] >= 16 && b[1] < 32) || (b[0] == 192 && b[1] == 168);
   }
+  if (b[0] == 0xfe && (b[1] & 0xc0) == 0x80) return true; // link-local
+  if ((b[0] & 0xfe) == 0xfc) return true; // unique local
+  try {
+    for (final iface in await NetworkInterface.list(type: InternetAddressType.IPv6)) {
+      for (final a in iface.addresses) {
+        if (_sameIPv6Subnet(a.rawAddress, b)) return true;
+      }
+    }
+  } on Object {
+    // Can't tell. "Outside" costs a re-probe, which is how it recovers.
+  }
+  return false;
+}
+
+/// Same /64: the standard size of a link's prefix, so the same /64 means
+/// the same link.
+bool _sameIPv6Subnet(List<int> a, List<int> b) {
+  for (var i = 0; i < 8; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
 }
 
 /// A local HTTP server that makes paired homes look like LAN servers to the
@@ -558,6 +597,7 @@ class _Link {
         s.address == status.address &&
         s.problem == status.problem &&
         s.viaSatellite == status.viaSatellite &&
+        s.atHome == status.atHome &&
         s.tried.join('\n') == status.tried.join('\n')) {
       return;
     }
@@ -587,7 +627,10 @@ class _Link {
               relays: home.relays, token: home.token, mismatched: () => _mismatch);
           _address = addr;
           _probedAt = DateTime.now();
-          _set(HomeStatus(HomeState.connected, address: addr, viaSatellite: home.relays.contains(addr)));
+          _set(HomeStatus(HomeState.connected,
+              address: addr,
+              viaSatellite: home.relays.contains(addr),
+              atHome: await isLocalAddress(addr)));
           return addr;
         } on LaunchpadException catch (e) {
           if (_address == null) {

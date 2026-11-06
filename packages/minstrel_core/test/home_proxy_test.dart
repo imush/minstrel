@@ -440,6 +440,21 @@ void main() {
       expect(addressNearest(InternetAddress('::1'), [wifi]), isNull);
     });
 
+    test('tells a home address from one reached from outside', () async {
+      expect(await isLocalAddress('192.168.1.22:7443'), isTrue);
+      expect(await isLocalAddress('10.0.0.5:7443'), isTrue);
+      expect(await isLocalAddress('172.20.1.1:7443'), isTrue);
+      expect(await isLocalAddress('172.32.1.1:7443'), isFalse, reason: 'outside 172.16/12');
+      expect(await isLocalAddress('gw.example.net:7443'), isFalse);
+      // IPv6 that can only be local.
+      expect(await isLocalAddress('[fd12:3456::1]:7443'), isTrue, reason: 'unique local');
+      expect(await isLocalAddress('[fe80::1]:7443'), isTrue, reason: 'link-local');
+      // A global IPv6 address this device shares no prefix with is outside.
+      // The same address from inside the home is local, which is why this
+      // is measured against the device's own addresses rather than parsed.
+      expect(await isLocalAddress('[2001:db8:dead:beef::1]:7443'), isFalse);
+    });
+
     test('moves saved URLs to the current port', () {
       final old = Uri.parse('http://127.0.0.1:1234/h/abc/u/192.168.1.9:9790/a.flac');
       expect(proxy.rehome(old).port, proxy.port);
