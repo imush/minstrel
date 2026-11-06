@@ -24,24 +24,27 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('a renderer on this network plays a home track through the phone', (tester) async {
-    expect(link, isNotEmpty, reason: 'pass --dart-define=PAIRING_LINK=...');
     expect(rendererName, isNotEmpty, reason: 'pass --dart-define=RENDERER=<part of its name>');
     await AppServices.init();
     final app = AppServices.instance;
-    for (final h in app.homes.homes) {
-      await app.homes.remove(h);
-    }
     await tester.pumpWidget(const MinstrelApp());
 
-    await tester.tap(find.byTooltip('Add home'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), link);
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Pair'));
-    expect(await _pumpUntil(tester, () => app.homes.homes.isNotEmpty), isTrue, reason: 'pairing failed');
-    final home = app.homes.homes.single;
-    expect(app.homes.status(home).state, HomeState.connected);
+    // A home already paired on this device is used as it is. Homes are not
+    // removed here: this may be someone's own phone, and re-pairing it is
+    // not this test's business.
+    if (app.homes.homes.isEmpty) {
+      expect(link, isNotEmpty, reason: 'no home paired here; pass --dart-define=PAIRING_LINK=...');
+      await tester.tap(find.byTooltip('Add home'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), link);
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pair'));
+      expect(await _pumpUntil(tester, () => app.homes.homes.isNotEmpty), isTrue, reason: 'pairing failed');
+    }
+    final home = app.homes.homes.first;
+    expect(await _pumpUntil(tester, () => app.homes.status(home).state == HomeState.connected), isTrue,
+        reason: 'home not reachable: ${app.homes.status(home).state}');
 
     expect(await _pumpUntil(tester, () => app.registry.homeServers(home.id).isNotEmpty), isTrue,
         reason: 'no servers behind the launchpad');
@@ -127,6 +130,9 @@ void main() {
     await app.relay.revoke();
     expect(app.relay.allowed, isFalse);
     expect(app.homes.proxy.relaying, isFalse);
+
+    // Put the device back on its own speaker.
+    await app.player.switchOutput(app.player.localOutput);
   });
 }
 
