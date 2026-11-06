@@ -140,6 +140,12 @@ class HomeProxy {
   /// this device.
   bool get relaying => _relay != null;
 
+  /// How many relayed requests have been served this session. A renderer
+  /// that cannot reach this device fails silently — it is handed a URL and
+  /// simply never asks for it — so this is the only way to tell the
+  /// difference between "playing" and "sitting there".
+  int get relayServed => _relay?.served ?? 0;
+
   /// Opens the relay listener on [address], one of this device's own LAN
   /// addresses, and returns the base for relay URLs. Null when it can't
   /// bind. Each session gets a fresh token, so URLs from an earlier one
@@ -330,6 +336,7 @@ class HomeProxy {
         local = local.substring('/r/${seg[1]}'.length);
         final asked = req.uri.hasQuery ? '$local?${req.uri.query}' : local;
         if (!relay.allowed.contains(asked)) return _deny(res, HttpStatus.notFound);
+        relay.served++;
       } else if (req.uri.pathSegments.firstOrNull == 'r') {
         // Relay URLs are not served on loopback: they carry no home id of
         // their own until the prefix is checked above.
@@ -483,6 +490,9 @@ class _Relay {
 
   /// Paths of the tracks currently queued; nothing else is served.
   Set<String> allowed = const {};
+
+  /// Requests that got past the token and the queue.
+  int served = 0;
 
   _Relay(this.server, this.token);
 

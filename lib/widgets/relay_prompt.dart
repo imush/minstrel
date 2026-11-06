@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../app_services.dart';
@@ -55,4 +57,27 @@ Future<RelayOffer> offerRelay(BuildContext context) async {
   return await app.relay.allow(renderer.device.location)
       ? RelayOffer.allowed
       : RelayOffer.unavailable;
+}
+
+/// Watches whether the player actually fetches anything, and says so when
+/// it doesn't.
+///
+/// A player that cannot reach this device gives no sign of it: it accepts
+/// the URL, never connects, and sits in silence. That happens wherever the
+/// network or the device keeps the two apart — a guest Wi-Fi with client
+/// isolation, or a Chromebook, which runs apps in a container of their own
+/// that the rest of the network can't open a connection into.
+void warnIfPlayerCannotReachUs(ScaffoldMessengerState messenger) {
+  final app = AppServices.instance;
+  final output = app.player.output;
+  final before = app.relay.served;
+  unawaited(Future<void>.delayed(const Duration(seconds: 12), () {
+    if (app.relay.served > before) return; // it fetched; whatever happens next is its own business
+    if (app.player.output.id != output.id || app.player.playbackState.value.playing) return;
+    messenger.showSnackBar(SnackBar(
+      duration: const Duration(seconds: 8),
+      content: Text('${output.name} never fetched the music from this device. '
+          'Some networks keep devices apart, and a Chromebook can\'t share music this way at all.'),
+    ));
+  }));
 }

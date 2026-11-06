@@ -367,6 +367,18 @@ void main() {
         expect(await r.fold<int>(0, (n, b) => n + b.length), lp.audio.length);
       });
 
+      test('counts what a player actually fetched', () async {
+        final relayed = proxy.relayFor(track())!;
+        proxy.allowRelay([relayed]);
+        expect(proxy.relayServed, 0);
+        await (await get(relayed)).drain<void>();
+        expect(proxy.relayServed, 1);
+        // Refusals don't count: a player that never gets past the door has
+        // not reached us, which is the thing being measured.
+        await status(proxy.relayFor(track('c.flac'))!);
+        expect(proxy.relayServed, 1);
+      });
+
       test('a wrong token gets the same bare 404 as nothing at all', () async {
         final relayed = proxy.relayFor(track())!;
         proxy.allowRelay([relayed]);

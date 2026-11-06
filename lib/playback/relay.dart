@@ -107,6 +107,9 @@ class Relay extends ChangeNotifier {
   /// Narrows the relay to what is queued right now.
   void setQueue(Iterable<Uri> uris) => proxy.allowRelay(uris);
 
+  /// How many times a player here has actually fetched something.
+  int get served => proxy.relayServed;
+
   static String _subnetOf(InternetAddress a) => a.rawAddress.take(3).join('.');
 
   /// The IPv4 subnets this device is on now. On failure, the one the

@@ -279,6 +279,7 @@ Future<bool> playTracks(BuildContext context, List<DidlItem> items, int start) a
     if (offer == RelayOffer.allowed) {
       try {
         await player.playItems(items, start);
+        warnIfPlayerCannotReachUs(messenger);
       } on Object catch (e) {
         if (!isConnectionError(e)) rethrow;
       }
