@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'video_reach.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -173,8 +174,14 @@ class LaunchpadInfo {
   /// Whether this device may invite others to the home (see sharing.dart).
   final bool canInvite;
 
+  /// How far from home this device may fetch video, as the launchpad says.
+  /// Its owner decides: a film is about a gigabyte an hour, on their upload
+  /// and, through a satellite, on a relay they pay for.
+  final VideoReach video;
+
   const LaunchpadInfo(this.name, this.version, this.servers,
-      [this.addresses = const [], this.relays, this.transcode = const [], this.canInvite = false]);
+      [this.addresses = const [], this.relays, this.transcode = const [], this.canInvite = false,
+      this.video = VideoReach.home]);
 
   static LaunchpadInfo fromJson(Map<String, dynamic> j) => LaunchpadInfo(
     j['name'] as String? ?? '',
@@ -192,6 +199,7 @@ class LaunchpadInfo {
     (j['relays'] as List?)?.cast<String>().toList(),
     [...?(j['transcode'] as List?)?.cast<String>()],
     (j['device'] as Map?)?['share'] == true,
+    VideoReach.byName((j['device'] as Map?)?['video'] as String?),
   );
 }
 

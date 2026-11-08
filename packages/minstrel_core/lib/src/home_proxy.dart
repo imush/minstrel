@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'launchpad.dart';
+import 'video_reach.dart';
 
 enum HomeState { connecting, connected, unreachable, notPaired }
 
@@ -273,6 +274,7 @@ class HomeProxy {
     if (resp.statusCode != 200) throw LaunchpadException(_problemFor(resp) ?? LaunchpadProblem.unreachable);
     final info = LaunchpadInfo.fromJson(jsonDecode(body) as Map<String, dynamic>);
     link.transcode = info.transcode;
+    link.video = info.video;
     return info;
   }
 
@@ -297,6 +299,14 @@ class HomeProxy {
 
   /// Whether home [id]'s launchpad can compress, as of its last answer.
   bool canCompress(String id) => _links[id]?.transcode.isNotEmpty ?? false;
+
+  /// How far from home this device may fetch video from home [id], as that
+  /// launchpad last said. Its owner decides; this is only so the app can
+  /// grey out what it would be refused.
+  VideoReach videoReach(String id) => _links[id]?.video ?? VideoReach.home;
+
+  /// Whether video from home [id] may be played over the route in use now.
+  bool videoAllowed(String id) => videoReach(id).allows(_links[id]?.status);
 
   Future<void> close() async {
     for (final l in _links.values) {
@@ -597,6 +607,9 @@ class _Link {
 
   /// Compression profiles the launchpad offers.
   List<String> transcode = const [];
+
+  /// How far from home this device may fetch video.
+  VideoReach video = VideoReach.home;
   Future<String>? _probing;
   HomeStatus status = const HomeStatus(HomeState.connecting);
 

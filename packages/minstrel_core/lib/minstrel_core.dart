@@ -22,3 +22,4 @@ export 'src/sharing.dart';
 export 'src/soap.dart';
 export 'src/ssdp.dart';
 export 'src/upnp_time.dart';
+export 'src/video_reach.dart';

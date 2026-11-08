@@ -124,7 +124,25 @@ class _BrowsePageState extends State<BrowsePage> {
   /// Opens a video on this device. Video doesn't join the queue: the queue
   /// is an album to listen to, and a renderer or the car can't take video
   /// anyway.
+  /// Whether this server's video may be played over the route in use. A
+  /// server found on this network is near by definition; one behind a home
+  /// is the launchpad owner's call, and they may have said home only.
+  bool get _videoAllowed {
+    final homeId = widget.server.homeId;
+    return homeId == null || AppServices.instance.homes.proxy.videoAllowed(homeId);
+  }
+
   Future<void> _playVideo(DidlItem item) async {
+    // Greyed out already when this isn't allowed; this is the backstop for
+    // a permission that changed since the listing was drawn.
+    if (!_videoAllowed) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        duration: Duration(seconds: 6),
+        content: Text('Video from this home isn\'t allowed over the connection in use. '
+            'Its owner can change that on the launchpad.'),
+      ));
+      return;
+    }
     final res = item.resources
         .where((r) => r.uri.isScheme('http') || r.uri.isScheme('https'))
         .firstOrNull;
@@ -256,6 +274,7 @@ class _BrowsePageState extends State<BrowsePage> {
                       ),
                     DidlItem item when item.isVideo => ItemTile(
                         item: item,
+                        enabled: _videoAllowed,
                         onTap: () => _playVideo(item),
                         onMore: () => showTrackInfo(context, item),
                       ),
@@ -435,11 +454,20 @@ class ContainerTile extends StatelessWidget {
 }
 
 class ItemTile extends StatelessWidget {
+  /// Video the launchpad won't serve over the route in use is shown but
+  /// not offered: better a greyed row than a tap that fails.
+  final bool enabled;
+
   final DidlItem item;
   final VoidCallback onTap;
   final VoidCallback onMore;
 
-  const ItemTile({super.key, required this.item, required this.onTap, required this.onMore});
+  const ItemTile(
+      {super.key,
+      required this.item,
+      required this.onTap,
+      required this.onMore,
+      this.enabled = true});
 
   @override
   Widget build(BuildContext context) {
@@ -471,7 +499,7 @@ class ItemTile extends StatelessWidget {
           onPressed: onMore,
         ),
       ]),
-      enabled: item.isPlayable,
+      enabled: enabled,
       onTap: onTap,
       onLongPress: onMore,
     );
