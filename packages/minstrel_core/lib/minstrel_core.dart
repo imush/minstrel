@@ -6,6 +6,7 @@ export 'src/device.dart';
 export 'src/didl.dart';
 export 'src/discovery.dart';
 export 'src/home_proxy.dart';
+export 'src/language.dart';
 export 'src/launchpad.dart';
 export 'src/library_search.dart';
 export 'src/protocol_info.dart';

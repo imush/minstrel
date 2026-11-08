@@ -12,6 +12,7 @@ import '../widgets/queue_actions.dart';
 import '../widgets/relay_prompt.dart';
 import '../widgets/track_info.dart';
 import 'search_page.dart';
+import 'video_page.dart';
 
 /// One level of a server's browse tree. MinimServer trees go many levels
 /// deep (Composer > name > Work > Performer > ...), so this page simply
@@ -120,6 +121,22 @@ class _BrowsePageState extends State<BrowsePage> {
     return _objects.whereType<DidlItem>().where((i) => i.isAudio).toList();
   }
 
+  /// Opens a video on this device. Video doesn't join the queue: the queue
+  /// is an album to listen to, and a renderer or the car can't take video
+  /// anyway.
+  Future<void> _playVideo(DidlItem item) async {
+    final res = item.resources
+        .where((r) => r.uri.isScheme('http') || r.uri.isScheme('https'))
+        .firstOrNull;
+    if (res == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${item.title} has nothing this device can fetch')));
+      return;
+    }
+    await Navigator.push(context,
+        MaterialPageRoute<void>(builder: (_) => VideoPage(item: item, uri: res.uri)));
+  }
+
   Future<void> _play(DidlItem? from) async {
     final items = await _allItems();
     if (items.isEmpty || !mounted) return;
@@ -132,8 +149,8 @@ class _BrowsePageState extends State<BrowsePage> {
 
   @override
   Widget build(BuildContext context) {
-    final items = _objects.whereType<DidlItem>().where((i) => i.isAudio).toList();
-    final hasItems = items.isNotEmpty;
+    final items = _objects.whereType<DidlItem>().where((i) => i.isPlayable).toList();
+    final hasItems = items.any((i) => i.isAudio);
     final shown = _shown;
     final filtering = _filter != null;
     // A leaf - an album's tracks, with nothing to browse into - gets one image
@@ -236,6 +253,11 @@ class _BrowsePageState extends State<BrowsePage> {
                             ),
                           ),
                         ),
+                      ),
+                    DidlItem item when item.isVideo => ItemTile(
+                        item: item,
+                        onTap: () => _playVideo(item),
+                        onMore: () => showTrackInfo(context, item),
                       ),
                     DidlItem item => ItemTile(
                         item: item,
@@ -449,7 +471,7 @@ class ItemTile extends StatelessWidget {
           onPressed: onMore,
         ),
       ]),
-      enabled: item.isAudio,
+      enabled: item.isPlayable,
       onTap: onTap,
       onLongPress: onMore,
     );

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
 
 import 'app_services.dart';
 import 'pages/servers_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  MediaKit.ensureInitialized();
   await AppServices.init();
   runApp(const MinstrelApp());
 }

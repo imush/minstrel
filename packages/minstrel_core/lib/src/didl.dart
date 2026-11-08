@@ -230,6 +230,13 @@ class DidlItem extends DidlObject {
 
   bool get isAudio => upnpClass.startsWith('object.item.audioItem');
 
+  bool get isVideo => upnpClass.startsWith('object.item.videoItem');
+
+  /// Whether Minstrel can play it at all. Separate from [isAudio], which
+  /// answers a different question: the queue, the car and the renderers all
+  /// deal in audio, while video is played on this device alone.
+  bool get isPlayable => isAudio || isVideo;
+
   Duration? get duration {
     for (final r in resources) {
       if (r.duration != null) return r.duration;
