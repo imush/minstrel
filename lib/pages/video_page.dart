@@ -32,6 +32,12 @@ class _VideoPageState extends State<VideoPage> {
   late final VideoController _controller = VideoController(_player);
   final _subs = <StreamSubscription<void>>[];
 
+  /// The frame's shape, once mpv has read it. The controls are drawn over
+  /// the video widget, so the widget is sized to the picture rather than
+  /// the screen — otherwise the seek bar sits on the very bottom edge of
+  /// the phone, in among the system gestures.
+  double? _ratio;
+
   List<SubtitleTrack> _subtitles = const [];
   List<AudioTrack> _audios = const [];
   Track? _track;
@@ -52,6 +58,8 @@ class _VideoPageState extends State<VideoPage> {
     _subs.add(_player.stream.track.listen((t) {
       if (mounted) setState(() => _track = t);
     }));
+    _subs.add(_player.stream.width.listen((_) => _sizeChanged()));
+    _subs.add(_player.stream.height.listen((_) => _sizeChanged()));
     _subs.add(_player.stream.error.listen((e) {
       if (mounted) setState(() => _error = e);
     }));
@@ -65,6 +73,13 @@ class _VideoPageState extends State<VideoPage> {
     unawaited(_player.open(Media(widget.uri.toString())));
     // Landscape while watching; the app is portrait-only otherwise.
     unawaited(SystemChrome.setPreferredOrientations(DeviceOrientation.values));
+  }
+
+  void _sizeChanged() {
+    final w = _player.state.width, h = _player.state.height;
+    if (!mounted || w == null || h == null || w <= 0 || h <= 0) return;
+    final ratio = w / h;
+    if (_ratio != ratio) setState(() => _ratio = ratio);
   }
 
   @override
@@ -142,7 +157,12 @@ class _VideoPageState extends State<VideoPage> {
                     textAlign: TextAlign.center,
                     style: const TextStyle(color: Colors.white70)),
               )
-            : Video(controller: _controller, controls: AdaptiveVideoControls),
+            : AspectRatio(
+                // 16:9 until mpv says otherwise: a sane shape to show
+                // while the first frame is still being read.
+                aspectRatio: _ratio ?? 16 / 9,
+                child: Video(controller: _controller, controls: AdaptiveVideoControls),
+              ),
       ),
     );
   }
