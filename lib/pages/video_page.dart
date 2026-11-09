@@ -157,13 +157,24 @@ class _VideoPageState extends State<VideoPage> {
                     textAlign: TextAlign.center,
                     style: const TextStyle(color: Colors.white70)),
               )
-            : AspectRatio(
-                // 16:9 until mpv says otherwise: a sane shape to show
-                // while the first frame is still being read.
-                aspectRatio: _ratio ?? 16 / 9,
-                child: Video(controller: _controller, controls: AdaptiveVideoControls),
+            : MaterialVideoControlsTheme(
+                normal: _controls,
+                fullscreen: _controls,
+                child: AspectRatio(
+                  // 16:9 until mpv says otherwise: a sane shape to show
+                  // while the first frame is still being read.
+                  aspectRatio: _ratio ?? 16 / 9,
+                  child: Video(controller: _controller, controls: AdaptiveVideoControls),
+                ),
               ),
       ),
     );
   }
 }
+
+/// The seek bar ships flush to the edges, where a phone's back-swipe and
+/// home gestures live, so its ends are hard to grab. The button bars above
+/// it already inset by 16; this gives the bar the same margin.
+const _controls = MaterialVideoControlsThemeData(
+  seekBarMargin: EdgeInsets.symmetric(horizontal: 16),
+);
