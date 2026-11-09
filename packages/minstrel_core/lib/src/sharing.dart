@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'video_reach.dart';
 import 'dart:typed_data';
 
 import 'home_proxy.dart';
@@ -14,6 +15,9 @@ class PairedDevice {
 
   /// May invite others.
   final bool canInvite;
+
+  /// How far from home it may fetch video.
+  final VideoReach video;
 
   /// The id of the device whose invitation it used; null for the console.
   final String? invitedBy;
@@ -31,6 +35,7 @@ class PairedDevice {
     required this.name,
     this.label,
     this.canInvite = false,
+    this.video = VideoReach.home,
     this.invitedBy,
     required this.created,
     this.lastSeen,
@@ -43,6 +48,7 @@ class PairedDevice {
         name: j['name'] as String? ?? '',
         label: j['label'] as String?,
         canInvite: j['share'] == true,
+        video: VideoReach.byName(j['video'] as String?),
         invitedBy: j['invitedBy'] as String?,
         created: DateTime.parse(j['created'] as String),
         lastSeen: j['lastSeen'] == null ? null : DateTime.parse(j['lastSeen'] as String),
@@ -122,9 +128,23 @@ extension HomeSharing on HomeProxy {
       ];
 
   /// A new invitation to listen, for the person [label].
-  Future<HomeInvitation> invite(String id, {String label = '', InvitationValidity valid = InvitationValidity.day}) async =>
-      HomeInvitation.fromJson(
-          await api(id, 'POST', '/api/invitations', {'label': label, 'valid': valid.code}) as Map<String, dynamic>);
+  ///
+  /// [video] is capped by the launchpad at what this device holds: you
+  /// cannot pass on more than you were given.
+  Future<HomeInvitation> invite(String id,
+          {String label = '',
+          InvitationValidity valid = InvitationValidity.day,
+          VideoReach video = VideoReach.home}) async =>
+      HomeInvitation.fromJson(await api(id, 'POST', '/api/invitations',
+          {'label': label, 'valid': valid.code, 'video': video.wire}) as Map<String, dynamic>);
+
+  /// Changes how far from home a device this one invited may fetch video,
+  /// optionally for everything invited through it as well. Capped the same
+  /// way as [invite].
+  Future<void> setDeviceVideo(String id, String deviceId, VideoReach video,
+          {bool recursive = false}) =>
+      api(id, 'PUT', '/api/devices/${Uri.encodeComponent(deviceId)}',
+          {'video': video.wire, 'recursive': recursive});
 
   Future<void> cancelInvitation(String id, String invitationId) =>
       api(id, 'DELETE', '/api/invitations/${Uri.encodeComponent(invitationId)}');

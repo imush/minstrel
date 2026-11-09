@@ -7,14 +7,28 @@ import 'home_proxy.dart';
 /// says nothing, which reads as [home] — the closed end, which is the safe
 /// way to be wrong.
 enum VideoReach {
-  home(''),
-  direct('direct'),
-  satellite('satellite');
+  home('', 'Home network only', 'at home',
+      'Video plays only on the same network as the server. Music is unaffected.'),
+  direct('direct', 'Also from outside', 'from outside',
+      'Also when the phone reaches home itself. About a gigabyte an hour, on '
+          'the home connection.'),
+  satellite('satellite', 'Also through the satellite', 'satellite too',
+      'Also when the satellite is the only way in. It carries every byte, on '
+          'the relay its owner runs.');
 
   /// The value the launchpad uses on the wire.
   final String wire;
 
-  const VideoReach(this.wire);
+  /// For a menu or a radio button.
+  final String label;
+
+  /// For a line that already has other words on it.
+  final String short;
+
+  /// What choosing it costs, in one sentence.
+  final String note;
+
+  const VideoReach(this.wire, this.label, this.short, this.note);
 
   static VideoReach byName(String? wire) =>
       VideoReach.values.where((v) => v.wire == (wire ?? '')).firstOrNull ?? VideoReach.home;
