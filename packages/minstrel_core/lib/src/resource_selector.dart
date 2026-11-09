@@ -25,6 +25,17 @@ class LocalSinks {
   );
 }
 
+/// Whether a player advertising [sinks] will take video at all.
+///
+/// Asked before offering a renderer, not after failing on one: a hi-fi
+/// streamer lists dozens of audio formats and no video, and there is no
+/// sense putting it in a list of places to watch a film. A sink of `*`
+/// means the player claims everything, which is taken at its word.
+bool acceptsVideo(List<ProtocolInfo> sinks) => sinks.any((s) =>
+    s.contentFormat == '*' ||
+    s.mimeType.startsWith('video/') ||
+    s.mimeType.startsWith('application/vnd.rn-realmedia'));
+
 class ResourceSelector {
   /// Chooses the resource of [item] to send to a player that accepts
   /// [sinks], or null if none is playable. Resources without protocolInfo

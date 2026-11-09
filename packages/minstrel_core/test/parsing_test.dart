@@ -37,6 +37,8 @@ void main() {
     });
   });
 
+  _videoSinkTests();
+
   group('DIDL-Lite', () {
     test('MinimServer root containers', () {
       final objs = parseDidlLite(didlFromEnvelope(fixture('minimserver-browse-root.xml')));
@@ -192,5 +194,30 @@ void main() {
     expect(parseUpnpDuration('NOT_IMPLEMENTED'), isNull);
     expect(parseUpnpDuration(''), isNull);
     expect(formatUpnpDuration(const Duration(hours: 1, minutes: 2, seconds: 3)), '1:02:03');
+  });
+}
+
+void _videoSinkTests() {
+  group('which players will take video', () {
+    test('a hi-fi streamer that lists only audio is not offered', () {
+      // The CXNv2's own list: 40 entries, none of them video.
+      final sinks = ProtocolInfo.parseList(
+          'http-get:*:audio/mpeg:*,http-get:*:audio/flac:*,http-get:*:audio/L16;rate=44100;channels=2:*');
+      expect(acceptsVideo(sinks), isFalse);
+    });
+
+    test('a player that lists matroska is offered', () {
+      final sinks = ProtocolInfo.parseList(
+          'http-get:*:audio/mpeg:*,http-get:*:video/x-matroska:*,http-get:*:video/mp4:*');
+      expect(acceptsVideo(sinks), isTrue);
+    });
+
+    test('a player claiming everything is taken at its word', () {
+      expect(acceptsVideo(ProtocolInfo.parseList('http-get:*:*:*')), isTrue);
+    });
+
+    test('nothing advertised is not an invitation', () {
+      expect(acceptsVideo(const []), isFalse);
+    });
   });
 }

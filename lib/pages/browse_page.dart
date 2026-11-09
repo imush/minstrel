@@ -12,7 +12,6 @@ import '../widgets/queue_actions.dart';
 import '../widgets/relay_prompt.dart';
 import '../widgets/track_info.dart';
 import 'search_page.dart';
-import 'video_page.dart';
 
 /// One level of a server's browse tree. MinimServer trees go many levels
 /// deep (Composer > name > Work > Performer > ...), so this page simply
@@ -124,37 +123,6 @@ class _BrowsePageState extends State<BrowsePage> {
   /// Opens a video on this device. Video doesn't join the queue: the queue
   /// is an album to listen to, and a renderer or the car can't take video
   /// anyway.
-  /// Whether this server's video may be played over the route in use. A
-  /// server found on this network is near by definition; one behind a home
-  /// is the launchpad owner's call, and they may have said home only.
-  bool get _videoAllowed {
-    final homeId = widget.server.homeId;
-    return homeId == null || AppServices.instance.homes.proxy.videoAllowed(homeId);
-  }
-
-  Future<void> _playVideo(DidlItem item) async {
-    // Greyed out already when this isn't allowed; this is the backstop for
-    // a permission that changed since the listing was drawn.
-    if (!_videoAllowed) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        duration: Duration(seconds: 6),
-        content: Text('Video from this home isn\'t allowed over the connection in use. '
-            'Its owner can change that on the launchpad.'),
-      ));
-      return;
-    }
-    final res = item.resources
-        .where((r) => r.uri.isScheme('http') || r.uri.isScheme('https'))
-        .firstOrNull;
-    if (res == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${item.title} has nothing this device can fetch')));
-      return;
-    }
-    await Navigator.push(context,
-        MaterialPageRoute<void>(builder: (_) => VideoPage(item: item, uri: res.uri)));
-  }
-
   Future<void> _play(DidlItem? from) async {
     final items = await _allItems();
     if (items.isEmpty || !mounted) return;
@@ -272,14 +240,12 @@ class _BrowsePageState extends State<BrowsePage> {
                           ),
                         ),
                       ),
-                    DidlItem item when item.isVideo => ItemTile(
-                        item: item,
-                        enabled: _videoAllowed,
-                        onTap: () => _playVideo(item),
-                        onMore: () => showTrackInfo(context, item),
-                      ),
                     DidlItem item => ItemTile(
                         item: item,
+                        // Video is listed so you can see it is there, and
+                        // greyed because Minstrel plays music. Opening it
+                        // is a job for a player built for video.
+                        enabled: item.isAudio,
                         onTap: () => _play(item),
                         onMore: () => showQueueActions(context,
                             title: item.title,
@@ -454,8 +420,7 @@ class ContainerTile extends StatelessWidget {
 }
 
 class ItemTile extends StatelessWidget {
-  /// Video the launchpad won't serve over the route in use is shown but
-  /// not offered: better a greyed row than a tap that fails.
+  /// Whether the row can be played. Video is shown but not offered.
   final bool enabled;
 
   final DidlItem item;

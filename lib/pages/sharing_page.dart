@@ -25,7 +25,6 @@ class _SharingPageState extends State<SharingPage> {
 
   final _label = TextEditingController();
   var _valid = InvitationValidity.day;
-  var _video = VideoReach.home;
   bool _creating = false;
   HomeInvitation? _created;
 
@@ -62,8 +61,7 @@ class _SharingPageState extends State<SharingPage> {
   Future<void> _invite() async {
     setState(() => _creating = true);
     try {
-      final inv = await _proxy.invite(_id,
-          label: _label.text.trim(), valid: _valid, video: _video);
+      final inv = await _proxy.invite(_id, label: _label.text.trim(), valid: _valid);
       _label.clear();
       setState(() => _created = inv);
       unawaited(_load());
@@ -129,22 +127,6 @@ class _SharingPageState extends State<SharingPage> {
     return '${MaterialLocalizations.of(context).formatMediumDate(local)}, $time';
   }
 
-  /// What this device may grant. The launchpad caps it anyway; offering
-  /// more than it will give would just be a lie in a menu.
-  VideoReach get _mine => _proxy.videoReach(_id);
-
-  List<VideoReach> get _grantable =>
-      VideoReach.values.where((v) => v.index <= _mine.index).toList();
-
-  Future<void> _setVideo(PairedDevice d, VideoReach v, bool recursive) async {
-    try {
-      await _proxy.setDeviceVideo(_id, d.id, v, recursive: recursive);
-      await _load();
-    } on Object catch (e) {
-      if (mounted) setState(() => _error = e);
-    }
-  }
-
   String _deviceName(String id) => _devices?.where((d) => d.id == id).firstOrNull?.name ?? 'a removed device';
 
   @override
@@ -187,24 +169,6 @@ class _SharingPageState extends State<SharingPage> {
                     subtitle: Text('Valid 7 days')),
               ]),
             ),
-            if (_grantable.length > 1) ...[
-              const _Heading('Video away from home'),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Text(
-                    'A film is about a gigabyte an hour, on the home connection \u2014 and '
-                    'through the satellite, on the relay its owner runs. Music is unaffected.',
-                    style: theme.textTheme.bodySmall),
-              ),
-              RadioGroup<VideoReach>(
-                groupValue: _video,
-                onChanged: (v) => setState(() => _video = v!),
-                child: Column(children: [
-                  for (final v in _grantable)
-                    RadioListTile(value: v, title: Text(v.label), subtitle: Text(v.note)),
-                ]),
-              ),
-            ],
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: FilledButton.icon(
@@ -244,25 +208,15 @@ class _SharingPageState extends State<SharingPage> {
                   subtitle: Text([
                     if (d.label != null && d.label != d.name) 'for ${d.label}',
                     d.canInvite ? 'can invite others' : 'listens',
-                    if (d.video != VideoReach.home) 'video ${d.video.short}',
                     if (d.invitedBy != null) 'invited by ${d.mine ? 'you' : _deviceName(d.invitedBy!)}',
                     if (d.lastSeen != null) 'last seen ${_when(d.lastSeen!)}',
                   ].join(' · ')),
                   trailing: d.mine
-                      ? Row(mainAxisSize: MainAxisSize.min, children: [
-                          if (_grantable.length > 1)
-                            _VideoMenu(
-                              device: d,
-                              grantable: _grantable,
-                              hasSubShares: devices.any((o) => o.invitedBy == d.id),
-                              onChosen: (v, recursive) => _setVideo(d, v, recursive),
-                            ),
-                          IconButton(
-                            tooltip: 'Remove',
-                            icon: const Icon(Icons.person_remove_outlined),
-                            onPressed: () => _revoke(d),
-                          ),
-                        ])
+                      ? IconButton(
+                          tooltip: 'Remove',
+                          icon: const Icon(Icons.person_remove_outlined),
+                          onPressed: () => _revoke(d),
+                        )
                       : null,
                 ),
               const Padding(
@@ -348,48 +302,5 @@ class _Heading extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.fromLTRB(16, 24, 16, 4),
         child: Text(text, style: Theme.of(context).textTheme.titleSmall),
-      );
-}
-
-/// The video choice for one device this phone invited.
-///
-/// A menu rather than a row of controls: most devices never need it
-/// changed, and the sharing page is already a long list.
-class _VideoMenu extends StatelessWidget {
-  final PairedDevice device;
-  final List<VideoReach> grantable;
-  final bool hasSubShares;
-  final void Function(VideoReach, bool recursive) onChosen;
-
-  const _VideoMenu({
-    required this.device,
-    required this.grantable,
-    required this.hasSubShares,
-    required this.onChosen,
-  });
-
-  @override
-  Widget build(BuildContext context) => PopupMenuButton<(VideoReach, bool)>(
-        tooltip: 'Video away from home',
-        icon: const Icon(Icons.movie_outlined),
-        onSelected: (choice) => onChosen(choice.$1, choice.$2),
-        itemBuilder: (context) => [
-          for (final v in grantable)
-            CheckedPopupMenuItem(
-              value: (v, false),
-              checked: device.video == v,
-              child: Text(v.label),
-            ),
-          // Only where it can mean something: a device nobody was invited
-          // through has nothing to apply it to.
-          if (hasSubShares) ...[
-            const PopupMenuDivider(),
-            for (final v in grantable)
-              PopupMenuItem(
-                value: (v, true),
-                child: Text('${v.label}, and everyone they invited'),
-              ),
-          ],
-        ],
       );
 }
