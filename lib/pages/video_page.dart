@@ -6,6 +6,8 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:minstrel_core/minstrel_core.dart';
 
+import '../app_services.dart';
+
 /// Plays one video on this device.
 ///
 /// Deliberately apart from the audio queue: video has a surface, an
@@ -70,6 +72,13 @@ class _VideoPageState extends State<VideoPage> {
     if (const bool.fromEnvironment('MPV_NULL_AUDIO') && _player.platform is NativePlayer) {
       unawaited((_player.platform! as NativePlayer).setProperty('ao', 'null'));
     }
+    // Two things can't have this device's speaker, and a paused track left
+    // in the Now Playing bar under a film is just clutter. Music on a
+    // renderer is in another room and is left alone: a film here is no
+    // reason to stop it there.
+    final audio = AppServices.instance.player;
+    if (audio.output.isLocal) unawaited(audio.clearQueue());
+
     unawaited(_player.open(Media(widget.uri.toString())));
     // Landscape while watching; the app is portrait-only otherwise.
     unawaited(SystemChrome.setPreferredOrientations(DeviceOrientation.values));
