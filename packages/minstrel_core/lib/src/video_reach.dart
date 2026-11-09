@@ -2,16 +2,18 @@ import 'home_proxy.dart';
 
 /// How far from home a device may fetch video, as its launchpad says.
 ///
-/// The launchpad decides and enforces this; the app carries it only so it
-/// can grey out what it would merely be refused for. An older launchpad
-/// says nothing, which reads as [home] — the closed end, which is the safe
-/// way to be wrong.
+/// Minstrel plays music, not films, so this governs downloading a video
+/// rather than streaming one. The launchpad decides and enforces it; the
+/// app carries it only to know what it may ask for. An older launchpad
+/// says nothing, which reads as [home] — the closed end, and the safe way
+/// to be wrong.
 enum VideoReach {
   home('', 'Home network only', 'at home',
-      'Video plays only on the same network as the server. Music is unaffected.'),
+      'Video can be downloaded only on the same network as the server. '
+          'Music is unaffected.'),
   direct('direct', 'Also from outside', 'from outside',
-      'Also when the phone reaches home itself. About a gigabyte an hour, on '
-          'the home connection.'),
+      'Also when the phone reaches home itself. A film is about a gigabyte '
+          'an hour, on the home connection.'),
   satellite('satellite', 'Also through the satellite', 'satellite too',
       'Also when the satellite is the only way in. It carries every byte, on '
           'the relay its owner runs.');
