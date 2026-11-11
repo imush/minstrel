@@ -4,19 +4,21 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:minstrel_core/minstrel_core.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../app_services.dart';
+import '../cache/device_storage.dart';
 
-/// Fetches [item] and hands it to the system's own save sheet, where the
-/// person decides what becomes of it — Downloads, Files, a cloud drive.
+/// Fetches [item] and puts it where the device keeps what people download:
+/// the shared Downloads collection on Android, and whatever the document
+/// picker is pointed at on iOS, which has no Downloads folder of its own.
 ///
 /// Deliberately not the music cache. A film is not kept for listening, so
 /// the cache's budget and eviction have nothing useful to say about one.
-/// The sheet also costs no storage permission and behaves the same on both
-/// platforms, which writing to a Downloads folder does not: Android's
-/// shared one needs an API level we don't require, and iOS has none.
-Future<void> saveACopy(BuildContext context, DidlItem item, {Rect? from}) async {
+///
+/// Not the share sheet either, which was tried first and cannot do this:
+/// it copies the whole file on the main thread before offering anywhere to
+/// put it, so a film froze the app and never reached a sheet at all.
+Future<void> saveACopy(BuildContext context, DidlItem item) async {
   final messenger = ScaffoldMessenger.of(context);
   final res = biggestResource(item);
   if (res == null) {
@@ -61,19 +63,25 @@ Future<void> saveACopy(BuildContext context, DidlItem item, {Rect? from}) async 
       return;
     }
 
-    // An iPad needs somewhere to put the sheet, or sharing throws.
-    final where = from ??
-        (context.mounted ? Offset.zero & MediaQuery.sizeOf(context) : null);
-    final shared = await SharePlus.instance.share(ShareParams(
-      files: [XFile(file.path, mimeType: res.mimeType)],
-      fileNameOverrides: [saveFileName(item, res)],
-      sharePositionOrigin: where,
-    ));
-    if (shared.status == ShareResultStatus.unavailable && context.mounted) {
-      await _explain(context, item.title,
-          'This device offered nowhere to put it. Nothing was saved.');
-    } else if (shared.status == ShareResultStatus.dismissed) {
-      messenger.showSnackBar(const SnackBar(content: Text('Not saved')));
+    final saved = await DeviceStorage.saveCopy(file,
+        name: saveFileName(item, res), mimeType: res.mimeType);
+    switch (saved.status) {
+      case 'saved':
+        messenger.showSnackBar(SnackBar(
+          content: Text('Saved ${saved.where ?? saveFileName(item, res)}'
+              '${Platform.isAndroid ? ' to Downloads' : ''}'),
+        ));
+      case 'cancelled':
+        messenger.showSnackBar(const SnackBar(content: Text('Not saved')));
+      default:
+        if (context.mounted) {
+          await _explain(
+              context,
+              item.title,
+              Platform.isAndroid
+                  ? 'Saving to Downloads needs Android 10 or later.'
+                  : 'This device offered nowhere to put it.');
+        }
     }
   } on Object catch (e) {
     if (context.mounted) await _explain(context, item.title, '$e');
@@ -82,17 +90,17 @@ Future<void> saveACopy(BuildContext context, DidlItem item, {Rect? from}) async 
   }
 }
 
-/// Throws away what saving a copy leaves behind.
-///
-/// Two directories, because the share sheet is handed a file by copying it
-/// into a folder of its own: ours, and that copy. Neither is cleaned up by
-/// anything else until the next share, so a film can sit in this app's
-/// cache taking gigabytes — which on a music player is the last thing
+/// Throws away what saving a copy leaves behind: a film can sit in this
+/// app's cache taking gigabytes, which on a music player is the last thing
 /// anybody expects to be holding.
 ///
-/// Done on the way in rather than on the way out: an app receiving the file
-/// may still be reading it when the sheet closes, so the copies live until
-/// the next save or the next start.
+/// Two directories. `saving` is where the fetch lands before it is handed
+/// over. `share_plus` is from the version that tried the share sheet,
+/// which copied the file into a folder of its own and cleaned it up only on
+/// the next share — testers who ran that build have one stranded there.
+///
+/// Done on the way in rather than out, since whatever is copying the file
+/// may not be finished when the picker closes.
 Future<void> cleanSaveScratch() async {
   final tmp = (await getTemporaryDirectory()).path;
   for (final name in ['saving', 'share_plus']) {

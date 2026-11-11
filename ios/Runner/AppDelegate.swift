@@ -33,6 +33,14 @@ final class DeviceStorage {
         switch call.method {
         case "space":
           result(Self.space())
+        case "saveCopy":
+          guard let args = call.arguments as? [String: Any],
+            let path = args["path"] as? String
+          else {
+            result(FlutterError(code: "arguments", message: "path is required", details: nil))
+            return
+          }
+          Self.export(URL(fileURLWithPath: path), result)
         case "excludeFromBackup":
           // Several gigabytes of cached music would otherwise go into iCloud
           // backup, where it would be pointless: it is a copy of a library
@@ -48,6 +56,33 @@ final class DeviceStorage {
         }
       }
   }
+
+  /// Hands a file the app has already fetched to the document picker, which
+  /// is where somebody chooses what becomes of it — On My iPhone, iCloud
+  /// Drive, or anywhere else they have.
+  ///
+  /// iOS has no Downloads folder to write to, and this is its equivalent:
+  /// the system does the copying, so a film never passes through memory or
+  /// holds up the app.
+  private static func export(_ file: URL, _ result: @escaping FlutterResult) {
+    guard
+      let root = UIApplication.shared.connectedScenes
+        .compactMap({ ($0 as? UIWindowScene)?.windows.first { $0.isKeyWindow } })
+        .first?.rootViewController
+    else {
+      result(["status": "unsupported"])
+      return
+    }
+    let picker = UIDocumentPickerViewController(forExporting: [file], asCopy: true)
+    let delegate = ExportDelegate(result)
+    picker.delegate = delegate
+    // The picker holds only a weak delegate, so it is kept alive here until
+    // it has answered.
+    exporting = delegate
+    root.present(picker, animated: true)
+  }
+
+  private static var exporting: ExportDelegate?
 
   /// What iOS says an app may still write.
   ///
@@ -76,6 +111,31 @@ final class DeviceStorage {
     }
     guard let free, let total, total > 0 else { return nil }
     return ["free": NSNumber(value: free), "total": NSNumber(value: total)]
+  }
+}
+
+/// Answers the save once the document picker is done with it.
+private final class ExportDelegate: NSObject, UIDocumentPickerDelegate {
+  private var result: FlutterResult?
+
+  init(_ result: @escaping FlutterResult) {
+    self.result = result
+  }
+
+  /// Called once, whichever way it ends; the picker is dismissed by itself.
+  private func answer(_ value: [String: Any]) {
+    result?(value)
+    result = nil
+  }
+
+  func documentPicker(
+    _ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]
+  ) {
+    answer(["status": "saved", "where": urls.first?.lastPathComponent ?? ""])
+  }
+
+  func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+    answer(["status": "cancelled"])
   }
 }
 

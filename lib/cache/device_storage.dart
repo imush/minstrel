@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 
 /// How much room the volume holding the cache has.
@@ -34,6 +36,28 @@ class DeviceStorage {
     } on Object {
       return null;
     }
+  }
+
+  /// Where a saved copy ended up, or why it didn't.
+  ///
+  /// [where] names the file when [status] is `saved`; `cancelled` means the
+  /// person chose not to, and `unsupported` that the platform offers
+  /// nowhere to put it — Android before 10, where the shared Downloads
+  /// folder needs a storage permission not worth asking everybody for.
+  static Future<({String status, String? where})> saveCopy(
+    File file, {
+    required String name,
+    String? mimeType,
+  }) async {
+    final answer = await _channel.invokeMapMethod<String, Object?>('saveCopy', {
+      'path': file.path,
+      'name': name,
+      'mimeType': mimeType,
+    });
+    return (
+      status: answer?['status'] as String? ?? 'unsupported',
+      where: answer?['where'] as String?,
+    );
   }
 
   /// Keeps [path] out of the owner's backups. Cached music is a copy of a

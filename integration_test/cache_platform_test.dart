@@ -39,6 +39,20 @@ void main() {
         '→ default budget ${CacheStore.defaultBudget(space) ~/ gigabyte} GB');
   });
 
+  test('a file can be put where the device keeps downloads', () async {
+    final tmp = File('${(await getTemporaryDirectory()).path}/minstrel-save-test.txt');
+    await tmp.writeAsString('Written by the Minstrel save test.');
+    final saved = await DeviceStorage.saveCopy(tmp,
+        name: 'minstrel-save-test.txt', mimeType: 'text/plain');
+    debugPrint('saveCopy -> ${saved.status} ${saved.where}');
+    expect(saved.status, 'saved');
+    expect(saved.where, isNotNull);
+    // Check from the host with:
+    //   adb shell ls -l /sdcard/Download/minstrel-save-test.txt
+  },
+      // iOS puts up a document picker, which needs somebody to tap it.
+      skip: !Platform.isAndroid);
+
   test('the cache directory can be kept out of backups', () async {
     final dir = Directory('${(await getApplicationSupportDirectory()).path}/music-cache');
     await dir.create(recursive: true);
