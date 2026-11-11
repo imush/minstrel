@@ -298,6 +298,22 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
     if (_entries.isEmpty) await clearQueue();
   }
 
+  /// Drops queued tracks that [reachable] says cannot be got at from here:
+  /// their server is out of reach and no copy is held on this device.
+  ///
+  /// The one playing is left where it is whatever its state. Taking the rug
+  /// from under playback would be worse than letting a track fail on its
+  /// own, and it is the one the listener can see.
+  Future<int> pruneQueue(bool Function(QueueEntry) reachable) async {
+    var dropped = 0;
+    for (var i = _entries.length - 1; i >= 0; i--) {
+      if (i == _currentIndex || reachable(_entries[i])) continue;
+      await removeQueueItemAt(i);
+      dropped++;
+    }
+    return dropped;
+  }
+
   /// Moves a queued track; the one playing stays put.
   Future<void> moveQueueItem(int from, int to) async {
     if (from == _currentIndex || from < 0 || from >= _entries.length) return;

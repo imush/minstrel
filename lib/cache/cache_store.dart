@@ -250,6 +250,20 @@ class CacheStore extends ChangeNotifier {
     return e;
   }
 
+  /// The copy held for [item], whichever of its resources was fetched.
+  ///
+  /// A server may offer the same track several ways, and the cache holds
+  /// one of them; this finds it without the caller having to know which.
+  CacheEntry? heldFor(DidlItem item) {
+    for (final r in item.resources) {
+      final key = keyFor(r.uri);
+      if (key == null) continue;
+      final held = entry(key);
+      if (held != null) return held;
+    }
+    return null;
+  }
+
   /// The copy to play instead of fetching from home, or null to fetch.
   ///
   /// Away from home a cached copy stands in when it is at least as good as

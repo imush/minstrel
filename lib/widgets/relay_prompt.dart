@@ -37,11 +37,11 @@ Future<RelayOffer> offerRelay(BuildContext context) async {
       title: Text('Play your music on $name?'),
       content: Text(
         '$name can\'t reach your music by itself. Minstrel can pass it '
-        'through this phone.\n\n'
+        'through this device.\n\n'
         'While this is on, anyone on this network can reach the tracks you '
-        'have queued. Tracks kept on this phone are sent straight from here; '
+        'have queued. Tracks kept on this device are sent straight from here; '
         'the rest come over your home connection, about 1 MB a minute for CD '
-        'quality. Either way this phone has to stay on this network with '
+        'quality. Either way this device has to stay on this network with '
         'Minstrel running.\n\n'
         'Stays on until you leave this network.',
       ),
@@ -49,7 +49,7 @@ Future<RelayOffer> offerRelay(BuildContext context) async {
         TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Not now')),
         TextButton(
           onPressed: () => Navigator.pop(context, true),
-          child: const Text('Play through this phone'),
+          child: const Text('Play through this device'),
         ),
       ],
     ),

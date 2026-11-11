@@ -136,7 +136,7 @@ class _ServersPageState extends State<ServersPage> {
               listenable: _app.cache,
               builder: (context, _) => ListTile(
                 leading: const Icon(Icons.phone_android, size: 40),
-                title: const Text('On this phone'),
+                title: const Text('On this device'),
                 subtitle: Text(_app.cache.entries.isEmpty
                     ? _app.cache.enabled ? 'Nothing kept yet' : 'Turned off'
                     : '${_app.cache.entries.length} tracks · '

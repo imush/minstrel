@@ -20,7 +20,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   /// Which homes can compress: it needs ffmpeg on their launchpad.
   String _compressionNote() {
-    const what = 'Music from home played on this phone over mobile data or elsewhere. '
+    const what = 'Music from home played on this device over mobile data or elsewhere. '
         'Music at home, and anything passed on to a player on this network, '
         'always gets the original.';
     final homes = _app.homes.homes;
@@ -155,7 +155,7 @@ class _OfflineCacheState extends State<_OfflineCache> {
         const ListTile(title: Text('Offline'), dense: true),
         SwitchListTile(
           value: on,
-          title: const Text('Keep music on this phone'),
+          title: const Text('Keep music on this device'),
           subtitle: const Text(
               'Tracks you play are saved while you are at home, so they play '
               'away from home and when home can\'t be reached.'),
@@ -175,8 +175,14 @@ class _OfflineCacheState extends State<_OfflineCache> {
                 onChanged:
                     on ? (v) => setState(() => _dragging = v) : null,
                 onChangeEnd: (v) async {
+                  final wanted = v.round() * gigabyte;
+                  // Dropping this clears the slider back to what is stored,
+                  // which is what shows if the change is turned down.
                   setState(() => _dragging = null);
-                  await _app.setCacheBudget(v.round() * gigabyte);
+                  if (wanted < cache.bytes && !await _confirmShrink(context, wanted)) {
+                    return;
+                  }
+                  await _app.setCacheBudget(wanted);
                   _remeasure();
                 },
               ),
@@ -207,7 +213,7 @@ class _OfflineCacheState extends State<_OfflineCache> {
   /// What is held, what it may grow to, and what the phone has left.
   String _summary(int held, int budget, StorageSpace? space) {
     final line = 'Holding ${formatBytes(held)} of ${formatBytes(budget)}';
-    return space == null ? line : '$line · ${formatBytes(space.free)} free on this phone';
+    return space == null ? line : '$line · ${formatBytes(space.free)} free on this device';
   }
 
   /// Why nothing is being saved, when that is the case. Worth saying: the
@@ -233,6 +239,42 @@ class _OfflineCacheState extends State<_OfflineCache> {
         title: Text(why, style: Theme.of(context).textTheme.bodyMedium),
       ),
     ];
+  }
+
+  /// Asks before lowering the limit past what is already held, since that
+  /// deletes music rather than only limiting what is kept in future.
+  Future<bool> _confirmShrink(BuildContext context, int wanted) async {
+    final cache = _app.cache;
+    // Pins are not evicted, so they are not what gets freed.
+    final loose = cache.bytes - cache.pinnedBytes;
+    final going = (cache.bytes - wanted).clamp(0, loose);
+    final stuck = cache.pinnedBytes > wanted;
+    final agreed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(going > 0 ? 'Remove ${formatBytes(going)} of music?' : 'Allow less room?'),
+        content: Text([
+          if (going > 0)
+            'Lowering the limit to ${formatBytes(wanted)} removes about '
+                '${formatBytes(going)}, the least recently played first.'
+          else
+            'Everything here is pinned, so nothing can be removed to fit '
+                '${formatBytes(wanted)}.',
+          if (cache.pinnedBytes > 0 && going > 0) 'Pinned music is kept.',
+          if (stuck)
+            'Pinned music alone takes ${formatBytes(cache.pinnedBytes)}, so '
+                'nothing new will be kept until you unpin some.',
+        ].join(' ')),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(going > 0 ? 'Remove' : 'Allow less')),
+        ],
+      ),
+    );
+    return agreed == true;
   }
 
   Future<void> _turnOn() async {
@@ -262,7 +304,7 @@ class _OfflineCacheState extends State<_OfflineCache> {
       builder: (context) => AlertDialog(
         title: Text(title),
         content: Text(
-          'This deletes the ${formatBytes(cache.bytes)} of music on this phone'
+          'This deletes the ${formatBytes(cache.bytes)} of music on this device'
           '${pinned == 0 ? '' : ', including $pinned pinned ${pinned == 1 ? 'track' : 'tracks'}'}.\n\n'
           'Your library at home is untouched, and anything you play again is '
           'saved afresh.',

@@ -134,9 +134,17 @@ class AppServices {
           : LocalCopy(cache.fileOf(held), held.resource.mimeType,
               source: held.resource.uri);
     };
-    // Arriving home is what gives the fetch its chance.
-    homes.proxy.changes.listen((_) => unawaited(cacheFetcher.pump()));
-    AppLifecycleListener(onResume: () => unawaited(cacheFetcher.pump()));
+    // Arriving home is what gives the fetch its chance; losing a network is
+    // what makes part of the queue unplayable.
+    homes.proxy.changes.listen((_) {
+      unawaited(cacheFetcher.pump());
+      _pruneQueueSoon();
+    });
+    registry.changes.listen((_) => _pruneQueueSoon());
+    AppLifecycleListener(onResume: () {
+      unawaited(cacheFetcher.pump());
+      _pruneQueueSoon();
+    });
     unawaited(cacheFetcher.pump());
   }
 
@@ -177,6 +185,39 @@ class AppServices {
     final here = registry.servers
         .any((s) => s.device.location.authority == uri.authority);
     return (onThisNetwork: here, reachable: here);
+  }
+
+  Timer? _pruneTimer;
+
+  /// Drops queued tracks that have become unreachable, once things settle.
+  ///
+  /// The wait matters more than it looks. On starting, and for a while
+  /// after joining a network, discovery has found nothing yet and every
+  /// track would look unreachable; pruning then would throw away the queue
+  /// that had just been restored. Any further change starts the wait again,
+  /// so a network coming up cancels it rather than racing it.
+  void _pruneQueueSoon() {
+    _pruneTimer?.cancel();
+    _pruneTimer = Timer(const Duration(seconds: 45), () async {
+      _pruneTimer = null;
+      if (player.entries.isEmpty) return;
+      await player.pruneQueue(_reachableNow);
+    });
+  }
+
+  /// Whether a queued track can be got at from here at all: its server
+  /// answers, or a copy is held on this device.
+  ///
+  /// Formats don't come into it — that is the output's business, and
+  /// resolving the queue reports it separately.
+  bool _reachableNow(QueueEntry e) {
+    final uri = e.resource.uri;
+    if (_sourceState(uri).reachable) return true;
+    final key = CacheStore.keyFor(uri);
+    // A relay URL is one we minted for a player on some other network;
+    // nothing here can judge it, so it is left alone.
+    if (key == null) return true;
+    return cache.entry(key) != null;
   }
 
   /// What to hand a renderer for a track whose server it cannot reach:

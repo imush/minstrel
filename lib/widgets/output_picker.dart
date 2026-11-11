@@ -30,9 +30,9 @@ Future<void> showOutputPicker(BuildContext context) async {
             // carry on without it, so that promise is left off.
             if (r.holdsQueue && !relayed) 'Keeps playing the queue on its own',
             if (relayed)
-              'Home music passes through this phone'
+              'Home music passes through this device'
             else if (away)
-              'Home music needs this phone to pass it on',
+              'Home music needs this device to pass it on',
           ];
           return notes.isEmpty ? null : notes.join(' · ');
         }

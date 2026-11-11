@@ -2,10 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:minstrel_core/minstrel_core.dart';
 
 import '../app_services.dart';
+import '../cache/cache_store.dart';
 import '../pages/settings_page.dart' show formatBytes;
 import 'relay_prompt.dart';
 
-enum QueueAction { playNow, playNext, addToQueue, download, downloadAndPin }
+enum QueueAction {
+  playNow,
+  playNext,
+  addToQueue,
+  download,
+  downloadAndPin,
+  unpin,
+  removeFromPhone,
+}
 
 /// Bottom sheet offering Play now / Play next / Add to queue for a track or
 /// a folder. [tracks] is called only after a choice, since collecting a
@@ -18,6 +27,7 @@ Future<void> showQueueActions(
   String playNowLabel = 'Play now',
   Future<void> Function()? playNow,
   VoidCallback? info,
+  bool? pinned,
 }) async {
   final action = await showModalBottomSheet<QueueAction>(
     context: context,
@@ -50,18 +60,41 @@ Future<void> showQueueActions(
           ),
           if (AppServices.instance.cache.enabled) ...[
             const Divider(height: 1),
-            ListTile(
-              leading: const Icon(Icons.download_outlined),
-              title: const Text('Keep on this phone'),
-              subtitle: const Text('Plays with no network, and ages out in time'),
-              onTap: () => Navigator.pop(context, QueueAction.download),
-            ),
-            ListTile(
-              leading: const Icon(Icons.push_pin_outlined),
-              title: const Text('Keep and pin'),
-              subtitle: const Text('Stays until you unpin it'),
-              onTap: () => Navigator.pop(context, QueueAction.downloadAndPin),
-            ),
+            // Already here: offered as what can be done to it instead.
+            if (pinned != null) ...[
+              if (pinned)
+                ListTile(
+                  leading: const Icon(Icons.push_pin),
+                  title: const Text('Unpin'),
+                  subtitle: const Text('Lets it age out when room is needed'),
+                  onTap: () => Navigator.pop(context, QueueAction.unpin),
+                )
+              else
+                ListTile(
+                  leading: const Icon(Icons.push_pin_outlined),
+                  title: const Text('Pin'),
+                  subtitle: const Text('Stays until you unpin it'),
+                  onTap: () => Navigator.pop(context, QueueAction.downloadAndPin),
+                ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline),
+                title: const Text('Remove from this device'),
+                onTap: () => Navigator.pop(context, QueueAction.removeFromPhone),
+              ),
+            ] else ...[
+              ListTile(
+                leading: const Icon(Icons.download_outlined),
+                title: const Text('Keep on this device'),
+                subtitle: const Text('Plays with no network, and ages out in time'),
+                onTap: () => Navigator.pop(context, QueueAction.download),
+              ),
+              ListTile(
+                leading: const Icon(Icons.push_pin_outlined),
+                title: const Text('Keep and pin'),
+                subtitle: const Text('Stays until you unpin it'),
+                onTap: () => Navigator.pop(context, QueueAction.downloadAndPin),
+              ),
+            ],
             const Divider(height: 1),
           ],
           if (info != null)
@@ -79,6 +112,53 @@ Future<void> showQueueActions(
   );
   if (action == null || !context.mounted) return;
   await runQueueAction(context, action, tracks: tracks, playNow: playNow);
+}
+
+/// Deletes copies of [items] held on this phone, having asked first.
+///
+/// Asked because the row sits next to Play and the music may be the only
+/// copy within reach — on a plane, deleting it cannot be undone until
+/// there is a network again.
+Future<void> _removeFromPhone(
+  BuildContext context,
+  ScaffoldMessengerState messenger,
+  List<DidlItem> items,
+) async {
+  final cache = AppServices.instance.cache;
+  final held = [for (final item in items) cache.heldFor(item)].whereType<CacheEntry>().toList();
+  if (held.isEmpty) {
+    messenger.showSnackBar(const SnackBar(content: Text('Not on this device')));
+    return;
+  }
+  final what = held.length == 1 ? 'this track' : '${held.length} tracks';
+  final bytes = held.fold(0, (n, e) => n + e.bytes);
+  final pinned = held.where((e) => e.pinned).length;
+  final agreed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(held.length == 1 ? 'Remove this track?' : 'Remove ${held.length} tracks?'),
+      content: Text([
+        'This deletes $what from this device, freeing ${formatBytes(bytes)}.',
+        if (pinned > 0)
+          pinned == held.length
+              ? 'They are pinned.'
+              : '$pinned of them ${pinned == 1 ? 'is' : 'are'} pinned.',
+        'Your library at home is untouched, but you will need a network to '
+            'hear it again.',
+      ].join(' ')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep it')),
+        TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Remove')),
+      ],
+    ),
+  );
+  if (agreed != true) return;
+  for (final entry in held) {
+    await cache.remove(entry.key);
+  }
+  messenger.showSnackBar(SnackBar(
+    content: Text('Removed $what from this device · ${formatBytes(bytes)} freed'),
+  ));
 }
 
 /// Keeps [items] on this phone, for a flight or a drive out of signal.
@@ -114,8 +194,8 @@ Future<void> _keepOnPhone(
   final added = app.download(items, pin: pin);
   messenger.showSnackBar(SnackBar(
     content: Text(added == 0
-        ? 'Already on this phone'
-        : 'Keeping ${added == 1 ? '1 track' : '$added tracks'} on this phone'
+        ? 'Already on this device'
+        : 'Keeping ${added == 1 ? '1 track' : '$added tracks'} on this device'
             '${pin ? ', pinned' : ''}'
             '${room.unknown > 0 ? '' : ' · ${formatBytes(room.bytes)}'}'),
   ));
@@ -140,6 +220,26 @@ Future<void> runQueueAction(
       messenger.showSnackBar(const SnackBar(content: Text('No tracks found')));
       return;
     }
+    if (action == QueueAction.unpin) {
+      final cache = AppServices.instance.cache;
+      var touched = 0;
+      for (final item in items) {
+        final held = cache.heldFor(item);
+        if (held == null) continue;
+        touched++;
+        await cache.setPinned(held.key, false);
+      }
+      messenger.showSnackBar(SnackBar(
+        content: Text(touched == 0
+            ? 'Not on this device'
+            : 'Unpinned ${touched == 1 ? '1 track' : '$touched tracks'}'),
+      ));
+      return;
+    }
+    if (action == QueueAction.removeFromPhone) {
+      if (context.mounted) await _removeFromPhone(context, messenger, items);
+      return;
+    }
     if (action == QueueAction.download || action == QueueAction.downloadAndPin) {
       if (context.mounted) {
         await _keepOnPhone(context, messenger, items,
@@ -151,7 +251,11 @@ Future<void> runQueueAction(
       QueueAction.playNow => await player.playItems(items, 0).then((_) => player.entries.length),
       QueueAction.playNext => await player.playNext(items),
       QueueAction.addToQueue => await player.addToQueue(items),
-      QueueAction.download || QueueAction.downloadAndPin => 0, // handled above
+      QueueAction.download ||
+      QueueAction.downloadAndPin ||
+      QueueAction.unpin ||
+      QueueAction.removeFromPhone =>
+        0, // handled above
     };
     // Tracks from a paired home only reach a renderer if this phone passes
     // them on. Play now replaced the queue, so it can simply run again;
@@ -164,7 +268,11 @@ Future<void> runQueueAction(
         QueueAction.playNow => await player.playItems(items, 0).then((_) => player.entries.length - added),
         QueueAction.playNext => await player.playNext(pending),
         QueueAction.addToQueue => await player.addToQueue(pending),
-        QueueAction.download || QueueAction.downloadAndPin => 0,
+        QueueAction.download ||
+        QueueAction.downloadAndPin ||
+        QueueAction.unpin ||
+        QueueAction.removeFromPhone =>
+          0,
       };
     }
     final what = added == 1 ? '1 track' : '$added tracks';
@@ -175,7 +283,11 @@ Future<void> runQueueAction(
           QueueAction.playNow => 'Playing $what',
           QueueAction.playNext => 'Playing $what next',
           QueueAction.addToQueue => 'Added $what to the queue',
-          QueueAction.download || QueueAction.downloadAndPin => '',
+          QueueAction.download ||
+          QueueAction.downloadAndPin ||
+          QueueAction.unpin ||
+          QueueAction.removeFromPhone =>
+            '',
         },
         if (player.needRelay.isNotEmpty)
           '${player.needRelay.length} left out: $name can\'t reach your home library',
