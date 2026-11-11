@@ -90,6 +90,34 @@ class DidlResource {
     return name;
   }
 
+  /// Whether this copy is at least as good as [other]: whether one kept on
+  /// this device can stand in for the one at home.
+  ///
+  /// Cautious where the figures are silent — a copy is good enough only when
+  /// nothing known about it is worse. Streaming a track we already had costs
+  /// a little data; quietly playing a worse copy is the kind of thing nobody
+  /// notices and everybody would mind.
+  bool atLeast(DidlResource other) {
+    if (isLossless != other.isLossless) return isLossless;
+    if (isLossless) {
+      // Lossless is lossless: only the sample format can separate two
+      // copies, and FLAC against WAV of the same master is a wash.
+      if (_worse(bitsPerSample, other.bitsPerSample)) return false;
+      if (_worse(sampleFrequency, other.sampleFrequency)) return false;
+      return true;
+    }
+    // Lossy: the bitrate is what differs. Without it only an identical
+    // format can be taken for the same encode.
+    if (bitrate != null && other.bitrate != null) return bitrate! >= other.bitrate!;
+    return mimeType == other.mimeType;
+  }
+
+  /// Whether this copy is worth replacing [other] with. Equal copies are
+  /// not: re-fetching an album to no audible end is pure waste.
+  bool isBetterThan(DidlResource other) => atLeast(other) && !other.atLeast(this);
+
+  static bool _worse(int? a, int? b) => a != null && b != null && a < b;
+
   static DidlResource? fromXml(XmlElement e, {Uri? base}) {
     final text = e.innerText.trim();
     if (text.isEmpty) return null;

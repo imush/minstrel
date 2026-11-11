@@ -355,6 +355,151 @@ void main() {
         return r.statusCode;
       }
 
+      group('serving a copy held on this device', () {
+        late Directory dir;
+        late File copy;
+        // 2600 bytes, each a known value, so a range can be checked exactly.
+        final bytes = List<int>.generate(2600, (i) => i % 256);
+
+        setUp(() async {
+          dir = await Directory.systemTemp.createTemp('minstrel-copy-test');
+          copy = File('${dir.path}/7.flac');
+          await copy.writeAsBytes(bytes);
+          proxy.localCopies = (name) => name == '7.flac'
+              ? LocalCopy(copy, 'audio/flac',
+                  source: Uri.parse('http://192.168.1.9:9790/a.flac'))
+              : null;
+        });
+
+        tearDown(() async {
+          proxy.localCopies = null;
+          await dir.delete(recursive: true);
+        });
+
+        /// A copy URL, queued so the relay will serve it.
+        Uri queued() {
+          final u = proxy.relayForCopy('7.flac')!;
+          proxy.allowRelay([u]);
+          return u;
+        }
+
+        test('is a relay URL, and says it holds a copy', () {
+          final u = proxy.relayForCopy('7.flac')!;
+          expect(HomeProxy.isRelayUrl(u), isTrue);
+          expect(HomeProxy.isRelayedCopy(u), isTrue);
+          expect(HomeProxy.isRelayedCopy(proxy.relayFor(track())!), isFalse);
+        });
+
+        test('serves the whole file with no home involved', () async {
+          final r = await get(queued());
+          expect(r.statusCode, HttpStatus.ok);
+          expect(r.contentLength, 2600);
+          expect(r.headers.contentType?.mimeType, 'audio/flac');
+          expect(r.headers.value(HttpHeaders.acceptRangesHeader), 'bytes',
+              reason: 'a player that cannot seek will not try');
+          expect(await r.fold<List<int>>([], (a, b) => a..addAll(b)), bytes);
+        });
+
+        test('answers a range, which is how a player seeks', () async {
+          final req = await client.getUrl(queued());
+          req.headers.set(HttpHeaders.rangeHeader, 'bytes=100-199');
+          final r = await req.close();
+          expect(r.statusCode, HttpStatus.partialContent);
+          expect(r.headers.value(HttpHeaders.contentRangeHeader), 'bytes 100-199/2600');
+          expect(r.contentLength, 100);
+          expect(await r.fold<List<int>>([], (a, b) => a..addAll(b)),
+              bytes.sublist(100, 200));
+        });
+
+        test('an open-ended range runs to the end', () async {
+          final req = await client.getUrl(queued());
+          req.headers.set(HttpHeaders.rangeHeader, 'bytes=2500-');
+          final r = await req.close();
+          expect(r.statusCode, HttpStatus.partialContent);
+          expect(r.headers.value(HttpHeaders.contentRangeHeader), 'bytes 2500-2599/2600');
+          expect(await r.fold<List<int>>([], (a, b) => a..addAll(b)), bytes.sublist(2500));
+        });
+
+        test('a suffix range gives the last bytes', () async {
+          final req = await client.getUrl(queued());
+          req.headers.set(HttpHeaders.rangeHeader, 'bytes=-100');
+          final r = await req.close();
+          expect(r.statusCode, HttpStatus.partialContent);
+          expect(r.headers.value(HttpHeaders.contentRangeHeader), 'bytes 2500-2599/2600');
+          expect(await r.fold<List<int>>([], (a, b) => a..addAll(b)), bytes.sublist(2500));
+        });
+
+        test('a range past the end is clamped, not refused', () async {
+          final req = await client.getUrl(queued());
+          req.headers.set(HttpHeaders.rangeHeader, 'bytes=2000-99999');
+          final r = await req.close();
+          expect(r.statusCode, HttpStatus.partialContent);
+          expect(r.headers.value(HttpHeaders.contentRangeHeader), 'bytes 2000-2599/2600');
+          await r.drain<void>();
+        });
+
+        test('a range starting past the end is refused properly', () async {
+          final req = await client.getUrl(queued());
+          req.headers.set(HttpHeaders.rangeHeader, 'bytes=9999-');
+          final r = await req.close();
+          expect(r.statusCode, HttpStatus.requestedRangeNotSatisfiable);
+          expect(r.headers.value(HttpHeaders.contentRangeHeader), 'bytes */2600');
+          await r.drain<void>();
+        });
+
+        test('a range it cannot parse is served whole rather than failed', () async {
+          final req = await client.getUrl(queued());
+          req.headers.set(HttpHeaders.rangeHeader, 'rows=1-2');
+          final r = await req.close();
+          expect(r.statusCode, HttpStatus.ok);
+          await r.drain<void>();
+        });
+
+        test('HEAD tells the length without the bytes', () async {
+          final r = await (await client.headUrl(queued())).close();
+          expect(r.statusCode, HttpStatus.ok);
+          expect(r.contentLength, 2600);
+          expect(await r.isEmpty, isTrue);
+        });
+
+        test('a copy that is not queued is not served', () async {
+          final u = proxy.relayForCopy('7.flac')!;
+          proxy.allowRelay(const []);
+          expect(await status(u), HttpStatus.notFound);
+        });
+
+        test('a copy the cache no longer holds is a plain 404', () async {
+          final u = queued();
+          await copy.delete();
+          expect(await status(u), HttpStatus.notFound);
+        });
+
+        test('a copy name the cache does not know is a plain 404', () async {
+          final u = proxy.relayForCopy('../../etc/passwd')!;
+          proxy.allowRelay([u]);
+          expect(await status(u), HttpStatus.notFound,
+              reason: 'only names the cache itself hands back are served');
+        });
+
+        test('a saved queue naming a copy comes back naming the server', () async {
+          // The token and the network are both gone by the next run, and
+          // the cache may no longer hold it, so it is resolved afresh.
+          expect(proxy.rehome(proxy.relayForCopy('7.flac')!),
+              Uri.parse('http://192.168.1.9:9790/a.flac'));
+        });
+
+        test('a saved copy the cache has dropped is left alone, not mangled', () async {
+          final gone = proxy.relayForCopy('404.flac')!;
+          expect(proxy.rehome(gone), gone);
+        });
+
+        test('copies are not served on the loopback listener', () async {
+          proxy.allowRelay([proxy.relayForCopy('7.flac')!]);
+          expect(await status(Uri.parse('http://127.0.0.1:${proxy.port}/c/7.flac')),
+              HttpStatus.notFound);
+        });
+      });
+
       test('serves a queued track to whoever asks, with the token', () async {
         final relayed = proxy.relayFor(track())!;
         expect(HomeProxy.isRelayUrl(relayed), isTrue);

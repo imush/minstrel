@@ -34,14 +34,15 @@ Future<RelayOffer> offerRelay(BuildContext context) async {
   final agreed = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
-      title: Text('Play home music on $name?'),
+      title: Text('Play your music on $name?'),
       content: Text(
-        '$name can\'t reach your home library by itself. Minstrel can pass '
-        'the music through this phone.\n\n'
+        '$name can\'t reach your music by itself. Minstrel can pass it '
+        'through this phone.\n\n'
         'While this is on, anyone on this network can reach the tracks you '
-        'have queued. The music comes over your home connection, about 1 MB '
-        'a minute for CD quality, and this phone has to stay on this network '
-        'with Minstrel running.\n\n'
+        'have queued. Tracks kept on this phone are sent straight from here; '
+        'the rest come over your home connection, about 1 MB a minute for CD '
+        'quality. Either way this phone has to stay on this network with '
+        'Minstrel running.\n\n'
         'Stays on until you leave this network.',
       ),
       actions: [

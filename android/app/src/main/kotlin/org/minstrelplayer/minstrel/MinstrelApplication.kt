@@ -7,6 +7,7 @@ import android.media.AudioManager
 import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
+import android.os.StatFs
 import android.provider.Settings
 import com.ryanheise.audioservice.AudioServicePlugin
 import io.flutter.embedding.engine.FlutterEngine
@@ -51,9 +52,30 @@ class MinstrelApplication : Application() {
                 }
             }
         volumeChannels(engine.dartExecutor.binaryMessenger)
+        storageChannel(engine.dartExecutor.binaryMessenger)
         // Channels first, then Dart: main() asks for the lock straight away.
         engine.dartExecutor.executeDartEntrypoint(DartExecutor.DartEntrypoint.createDefault())
         FlutterEngineCache.getInstance().put(AudioServicePlugin.getFlutterEngineId(), engine)
+    }
+
+    /**
+     * Room on the volume the offline cache lives on
+     * (lib/cache/device_storage.dart). filesDir is where path_provider puts
+     * the application support directory, so it is the volume that matters.
+     */
+    private fun storageChannel(messenger: BinaryMessenger) {
+        MethodChannel(messenger, "org.minstrelplayer/storage").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "space" -> {
+                    val stat = StatFs(filesDir.absolutePath)
+                    result.success(mapOf("free" to stat.availableBytes, "total" to stat.totalBytes))
+                }
+                // Backup is excluded by res/xml/backup_rules.xml here, with
+                // nothing to do at runtime; iOS has to mark the directory.
+                "excludeFromBackup" -> result.success(null)
+                else -> result.notImplemented()
+            }
+        }
     }
 
     /** The media volume, 0 to 1, for the slider on Now Playing (lib/playback/system_volume.dart). */

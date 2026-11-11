@@ -6,6 +6,7 @@ import 'package:minstrel_core/minstrel_core.dart';
 import '../app_services.dart';
 import '../widgets/cover_art.dart';
 import '../widgets/mini_player.dart';
+import 'offline_page.dart';
 import 'add_home_page.dart';
 import 'browse_page.dart';
 import 'settings_page.dart';
@@ -129,6 +130,21 @@ class _ServersPageState extends State<ServersPage> {
               for (final h in homes) _HomeTile(home: h),
             ],
             const _Header('Music servers'),
+            // A source like any other, and listed even when empty: seeing
+            // what you have is the point of it before a journey.
+            ListenableBuilder(
+              listenable: _app.cache,
+              builder: (context, _) => ListTile(
+                leading: const Icon(Icons.phone_android, size: 40),
+                title: const Text('On this phone'),
+                subtitle: Text(_app.cache.entries.isEmpty
+                    ? _app.cache.enabled ? 'Nothing kept yet' : 'Turned off'
+                    : '${_app.cache.entries.length} tracks · '
+                        '${formatBytes(_app.cache.bytes)}'),
+                onTap: () => Navigator.push(
+                    context, MaterialPageRoute(builder: (_) => const OfflinePage())),
+              ),
+            ),
             if (servers.isEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),

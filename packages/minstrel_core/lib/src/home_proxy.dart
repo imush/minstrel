@@ -141,6 +141,11 @@ class HomeProxy {
   /// this device.
   bool get relaying => _relay != null;
 
+  /// Finds a copy held on this device by its cache file name, so the relay
+  /// can serve it to a player that cannot reach the server itself — away
+  /// from home, or with home down altogether. Null where there is no cache.
+  LocalCopy? Function(String name)? localCopies;
+
   /// How many relayed requests have been served this session. A renderer
   /// that cannot reach this device fails silently — it is handed a URL and
   /// simply never asks for it — so this is the only way to tell the
@@ -182,6 +187,14 @@ class HomeProxy {
     return Uri.parse('${relay.base}${homeUrl.path}$query');
   }
 
+  /// The relay URL for a copy held on this device, named by its file name
+  /// in the cache. Null when the relay isn't open. Still has to be named by
+  /// [allowRelay] to be served.
+  Uri? relayForCopy(String name) {
+    final relay = _relay;
+    return relay == null ? null : Uri.parse('${relay.base}/c/$name');
+  }
+
   /// Limits the relay to the tracks of the current queue, given as the
   /// relay URLs handed to the renderer. A renderer never needs more than
   /// what is queued, so a token that leaks exposes only that, not the
@@ -192,13 +205,20 @@ class HomeProxy {
     relay.allowed = {for (final u in relayUrls) if (isRelayUrl(u)) _relayedPath(u)};
   }
 
-  /// Whether [uri] is one of this proxy's relay URLs.
+  /// Whether [uri] is one of this proxy's relay URLs: a home path (`h`) or
+  /// a copy held on this device (`c`).
   static bool isRelayUrl(Uri uri) {
     final seg = uri.pathSegments;
-    return seg.length >= 3 && seg[0] == 'r' && seg[2] == 'h';
+    return seg.length >= 3 && seg[0] == 'r' && (seg[2] == 'h' || seg[2] == 'c');
   }
 
-  /// The home path a relay URL stands for: `/r/<token>/h/x/u/y` → `/h/x/u/y`.
+  /// Whether [uri] names a copy held on this device rather than a home.
+  static bool isRelayedCopy(Uri uri) {
+    final seg = uri.pathSegments;
+    return seg.length >= 3 && seg[0] == 'r' && seg[2] == 'c';
+  }
+
+  /// The path a relay URL stands for: `/r/<token>/h/x/u/y` → `/h/x/u/y`.
   static String _relayedPath(Uri uri) {
     final prefix = '/r/${uri.pathSegments[1]}';
     final path = uri.path.startsWith(prefix) ? uri.path.substring(prefix.length) : uri.path;
@@ -255,6 +275,14 @@ class HomeProxy {
   /// and the address it was served on are both gone, and this device can
   /// always play it itself.
   Uri rehome(Uri uri) {
+    // A copy served to a player on the last network: the loopback form of
+    // that path serves nothing, so it goes back to the server it came from
+    // and is resolved again from scratch — by then the cache may not even
+    // hold it any more.
+    if (isRelayedCopy(uri)) {
+      final name = uri.pathSegments.skip(3).join('/');
+      return localCopies?.call(name)?.source ?? uri;
+    }
     if (isRelayUrl(uri)) return Uri.parse('http://127.0.0.1:$port${_relayedPath(uri)}');
     return uri.host == '127.0.0.1' && uri.pathSegments.firstOrNull == 'h' && uri.port != port
         ? uri.replace(port: port)
@@ -318,6 +346,67 @@ class HomeProxy {
     await _changes.close();
   }
 
+  /// Serves a copy held on this device to a player on the network.
+  ///
+  /// Players ask for ranges — to seek, and some simply to start — so this
+  /// answers them rather than only whole files. One range per request is
+  /// all any player asks for, and multipart responses are not worth the
+  /// code they would take.
+  Future<void> _serveCopy(HttpRequest req, HttpResponse res, String name) async {
+    final copy = localCopies?.call(name);
+    if (copy == null || !await copy.file.exists()) {
+      return _deny(res, HttpStatus.notFound);
+    }
+    final length = await copy.file.length();
+    final asked = req.headers.value(HttpHeaders.rangeHeader);
+    final parts = asked == null
+        ? null
+        : RegExp(r'^bytes=(\d*)-(\d*)$').firstMatch(asked.trim());
+    final from = parts?.group(1) ?? '';
+    final to = parts?.group(2) ?? '';
+    // A Range in units we don't know, or one we can't make sense of, is
+    // ignored and the whole file sent — what RFC 9110 asks for, and what
+    // keeps an unfamiliar player working. Only a well-formed range that
+    // cannot be met is refused.
+    final wantsRange = parts != null && !(from.isEmpty && to.isEmpty) && length > 0;
+    final range = wantsRange ? _satisfy(from, to, length) : null;
+    if (wantsRange && range == null) {
+      res.statusCode = HttpStatus.requestedRangeNotSatisfiable;
+      res.headers.set(HttpHeaders.contentRangeHeader, 'bytes */$length');
+      return res.close();
+    }
+    final (start, end) = range ?? (0, length - 1);
+    res.statusCode = range == null ? HttpStatus.ok : HttpStatus.partialContent;
+    res.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
+    if (range != null) {
+      res.headers.set(HttpHeaders.contentRangeHeader, 'bytes $start-$end/$length');
+    }
+    try {
+      res.headers.contentType = ContentType.parse(copy.mimeType ?? 'application/octet-stream');
+    } on FormatException {
+      res.headers.contentType = ContentType.binary;
+    }
+    res.contentLength = end - start + 1;
+    if (req.method == 'HEAD') return res.close();
+    await res.addStream(copy.file.openRead(start, end + 1));
+    await res.close();
+  }
+
+  /// The byte range `from`-`to` asks for, clamped to [length], or null
+  /// when it cannot be met at all.
+  static (int, int)? _satisfy(String from, String to, int length) {
+    if (from.isEmpty) {
+      final last = int.tryParse(to);
+      if (last == null || last <= 0) return null;
+      return (last >= length ? 0 : length - last, length - 1);
+    }
+    final start = int.tryParse(from);
+    if (start == null || start >= length) return null;
+    final end = to.isEmpty ? length - 1 : int.tryParse(to);
+    if (end == null || end < start) return null;
+    return (start, end >= length ? length - 1 : end);
+  }
+
   static const _hopByHop = {
     'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer',
     'transfer-encoding', 'upgrade', 'host', 'content-length', 'accept-encoding', 'authorization',
@@ -347,6 +436,10 @@ class HomeProxy {
         final asked = req.uri.hasQuery ? '$local?${req.uri.query}' : local;
         if (!relay.allowed.contains(asked)) return _deny(res, HttpStatus.notFound);
         relay.served++;
+        // A copy held here: served from disk, with no home involved at all.
+        if (local.startsWith('/c/')) {
+          return await _serveCopy(req, res, local.substring('/c/'.length));
+        }
       } else if (req.uri.pathSegments.firstOrNull == 'r') {
         // Relay URLs are not served on loopback: they carry no home id of
         // their own until the prefix is checked above.
@@ -491,6 +584,20 @@ class HomeProxy {
       current = null;
     }
   }
+}
+
+/// A copy of a track held on this device, for the relay to serve.
+class LocalCopy {
+  final File file;
+
+  /// What the file holds, for the Content-Type a player is given.
+  final String? mimeType;
+
+  /// The server URL this is a copy of, so a saved queue naming the copy can
+  /// be turned back into something that resolves afresh on the next run.
+  final Uri? source;
+
+  const LocalCopy(this.file, this.mimeType, {this.source});
 }
 
 /// The relay listener: one session, one token, one set of allowed paths.

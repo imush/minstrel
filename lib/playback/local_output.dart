@@ -45,6 +45,18 @@ class LocalOutput implements Output {
   Future<List<ProtocolInfo>> sinks() async =>
       Platform.isAndroid ? LocalSinks.android : LocalSinks.apple;
 
+  /// Where a queued track's bytes actually come from, which the offline
+  /// cache uses to play its own copy.
+  ///
+  /// Substituted here rather than in the queue so that the queue, the
+  /// metadata and the saved snapshot stay expressed as home URLs: a cached
+  /// file can be evicted between runs, and a saved queue that named one
+  /// would come back broken.
+  Uri Function(QueueEntry)? sourceFor;
+
+  AudioSource _source(QueueEntry e) =>
+      AudioSource.uri(sourceFor?.call(e) ?? e.resource.uri);
+
   @override
   Stream<OutputState> get states => _states.stream;
   @override
@@ -54,7 +66,7 @@ class LocalOutput implements Output {
   Future<void> load(List<QueueEntry> entries, int index,
       {Duration position = Duration.zero, bool play = true}) async {
     await _player.setAudioSources(
-      [for (final e in entries) AudioSource.uri(e.resource.uri)],
+      [for (final e in entries) _source(e)],
       initialIndex: index,
       initialPosition: position,
       preload: false,
@@ -68,7 +80,7 @@ class LocalOutput implements Output {
 
   @override
   Future<void> insert(int at, List<QueueEntry> entries) =>
-      _player.insertAudioSources(at, [for (final e in entries) AudioSource.uri(e.resource.uri)]);
+      _player.insertAudioSources(at, [for (final e in entries) _source(e)]);
   @override
   Future<void> removeAt(int at) => _player.removeAudioSourceAt(at);
   @override

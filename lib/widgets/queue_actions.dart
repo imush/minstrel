@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:minstrel_core/minstrel_core.dart';
 
 import '../app_services.dart';
+import '../pages/settings_page.dart' show formatBytes;
 import 'relay_prompt.dart';
 
-enum QueueAction { playNow, playNext, addToQueue }
+enum QueueAction { playNow, playNext, addToQueue, download, downloadAndPin }
 
 /// Bottom sheet offering Play now / Play next / Add to queue for a track or
 /// a folder. [tracks] is called only after a choice, since collecting a
@@ -47,6 +48,22 @@ Future<void> showQueueActions(
             title: const Text('Add to queue'),
             onTap: () => Navigator.pop(context, QueueAction.addToQueue),
           ),
+          if (AppServices.instance.cache.enabled) ...[
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.download_outlined),
+              title: const Text('Keep on this phone'),
+              subtitle: const Text('Plays with no network, and ages out in time'),
+              onTap: () => Navigator.pop(context, QueueAction.download),
+            ),
+            ListTile(
+              leading: const Icon(Icons.push_pin_outlined),
+              title: const Text('Keep and pin'),
+              subtitle: const Text('Stays until you unpin it'),
+              onTap: () => Navigator.pop(context, QueueAction.downloadAndPin),
+            ),
+            const Divider(height: 1),
+          ],
           if (info != null)
             ListTile(
               leading: const Icon(Icons.info_outline),
@@ -62,6 +79,46 @@ Future<void> showQueueActions(
   );
   if (action == null || !context.mounted) return;
   await runQueueAction(context, action, tracks: tracks, playNow: playNow);
+}
+
+/// Keeps [items] on this phone, for a flight or a drive out of signal.
+///
+/// Says up front when they will not fit. Without that, the last tracks of
+/// an album would evict its first ones and the download would look as
+/// though it had worked.
+Future<void> _keepOnPhone(
+  BuildContext context,
+  ScaffoldMessengerState messenger,
+  List<DidlItem> items, {
+  required bool pin,
+}) async {
+  final app = AppServices.instance;
+  final room = app.cacheFetcher.estimate(items);
+  if (room.bytes > room.room) {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Not enough room'),
+        content: Text(
+          'This needs ${formatBytes(room.bytes)} and there is '
+          '${formatBytes(room.room)} to spare. Allow more room for music in '
+          'Settings, or unpin some of what is already here.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+        ],
+      ),
+    );
+    return;
+  }
+  final added = app.download(items, pin: pin);
+  messenger.showSnackBar(SnackBar(
+    content: Text(added == 0
+        ? 'Already on this phone'
+        : 'Keeping ${added == 1 ? '1 track' : '$added tracks'} on this phone'
+            '${pin ? ', pinned' : ''}'
+            '${room.unknown > 0 ? '' : ' · ${formatBytes(room.bytes)}'}'),
+  ));
 }
 
 /// Carries out [action], reporting the result in a snack bar.
@@ -83,10 +140,18 @@ Future<void> runQueueAction(
       messenger.showSnackBar(const SnackBar(content: Text('No tracks found')));
       return;
     }
+    if (action == QueueAction.download || action == QueueAction.downloadAndPin) {
+      if (context.mounted) {
+        await _keepOnPhone(context, messenger, items,
+            pin: action == QueueAction.downloadAndPin);
+      }
+      return;
+    }
     var added = switch (action) {
       QueueAction.playNow => await player.playItems(items, 0).then((_) => player.entries.length),
       QueueAction.playNext => await player.playNext(items),
       QueueAction.addToQueue => await player.addToQueue(items),
+      QueueAction.download || QueueAction.downloadAndPin => 0, // handled above
     };
     // Tracks from a paired home only reach a renderer if this phone passes
     // them on. Play now replaced the queue, so it can simply run again;
@@ -99,6 +164,7 @@ Future<void> runQueueAction(
         QueueAction.playNow => await player.playItems(items, 0).then((_) => player.entries.length - added),
         QueueAction.playNext => await player.playNext(pending),
         QueueAction.addToQueue => await player.addToQueue(pending),
+        QueueAction.download || QueueAction.downloadAndPin => 0,
       };
     }
     final what = added == 1 ? '1 track' : '$added tracks';
@@ -109,6 +175,7 @@ Future<void> runQueueAction(
           QueueAction.playNow => 'Playing $what',
           QueueAction.playNext => 'Playing $what next',
           QueueAction.addToQueue => 'Added $what to the queue',
+          QueueAction.download || QueueAction.downloadAndPin => '',
         },
         if (player.needRelay.isNotEmpty)
           '${player.needRelay.length} left out: $name can\'t reach your home library',

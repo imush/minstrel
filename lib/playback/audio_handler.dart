@@ -60,6 +60,16 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
   /// Receives the queue to save, a couple of seconds after it changes and
   /// periodically during playback.
   void Function(QueueSnapshot)? onSnapshot;
+
+  /// Receives each track as it starts playing, which is what the offline
+  /// cache keeps: music somebody actually listens to.
+  void Function(QueueEntry)? onPlayed;
+
+  /// A copy held on this device, served to a renderer through the relay,
+  /// for when the renderer cannot reach the server and neither can we.
+  /// Null when there is none, or when the relay is not open.
+  DidlResource? Function(DidlResource wanted, List<ProtocolInfo> sinks)? copyForRenderer;
+  String? _noted;
   Timer? _saveTimer;
   DateTime _savedAt = DateTime.fromMillisecondsSinceEpoch(0);
   int _savedIndex = -1;
@@ -327,7 +337,12 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
         continue;
       }
       var chosen = res;
-      if (!local && HomeProxy.isHomeUrl(res.uri)) {
+      // A copy on this phone comes first when the server is out of reach:
+      // it needs no home connection at all, so it plays with home down.
+      final copy = local ? null : copyForRenderer?.call(res, sinks);
+      if (copy != null) {
+        chosen = copy;
+      } else if (!local && HomeProxy.isHomeUrl(res.uri)) {
         // A home URL is loopback: it means this phone, so to a renderer it
         // would mean the renderer itself. It needs one this phone serves on
         // the local network, which takes the user's permission.
@@ -512,6 +527,16 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
       mediaItem.add(_mediaItem(_entries[index], reported));
     } else if (hasItem && reported != null && mediaItem.value?.duration != reported) {
       mediaItem.add(mediaItem.value!.copyWith(duration: reported));
+    }
+    // Only once it is really playing: a track skipped past is not one
+    // anybody wants kept on the phone.
+    if (hasItem && (s.playing || s.buffering)) {
+      final started = _entries[index];
+      final id = started.resource.uri.toString();
+      if (_noted != id) {
+        _noted = id;
+        onPlayed?.call(started);
+      }
     }
     if (index != _savedIndex ||
         (s.playing && DateTime.now().difference(_savedAt) > const Duration(seconds: 15))) {

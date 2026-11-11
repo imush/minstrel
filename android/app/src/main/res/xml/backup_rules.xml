@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cached music is a copy of a library that lives at home, so there is no
+     sense carrying gigabytes of it through Google's backup quota: it is
+     re-fetched on the new device from the home it came from. -->
+<full-backup-content>
+    <exclude domain="file" path="music-cache"/>
+</full-backup-content>

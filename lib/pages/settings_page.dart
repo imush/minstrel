@@ -3,6 +3,9 @@ import 'package:minstrel_core/minstrel_core.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../app_services.dart';
+import '../cache/cache_store.dart';
+import '../cache/device_storage.dart';
+import 'offline_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -98,11 +101,190 @@ class _SettingsPageState extends State<SettingsPage> {
             ]),
           ),
           const Divider(),
+          const _OfflineCache(),
+          const Divider(),
           const AppVersion(),
         ],
       ),
     );
   }
+}
+
+/// Music kept on this phone, so it plays away from home and when home
+/// can't be reached.
+class _OfflineCache extends StatefulWidget {
+  const _OfflineCache();
+
+  @override
+  State<_OfflineCache> createState() => _OfflineCacheState();
+}
+
+class _OfflineCacheState extends State<_OfflineCache> {
+  final _app = AppServices.instance;
+  Future<StorageSpace?> _space = DeviceStorage.space();
+
+  /// While a finger is on the slider, what it says rather than what is set.
+  double? _dragging;
+
+  void _remeasure() => setState(() => _space = DeviceStorage.space());
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: _app.cache,
+        builder: (context, _) => FutureBuilder<StorageSpace?>(
+          future: _space,
+          builder: (context, snap) => _section(context, snap.data),
+        ),
+      );
+
+  Widget _section(BuildContext context, StorageSpace? space) {
+    final cache = _app.cache;
+    final on = cache.enabled;
+    final held = cache.bytes;
+    final budgetGb = (cache.budget / gigabyte).round();
+    // The slider can reach whatever is free plus what the cache already
+    // holds, since that space comes back as it is re-used.
+    final roomGb = ((space?.free ?? 0) + held) ~/ gigabyte;
+    final maxGb = [roomGb, budgetGb, 1].reduce((a, b) => a > b ? a : b).clamp(1, 512);
+    final showGb = (_dragging ?? budgetGb.toDouble()).clamp(1, maxGb).round();
+    final dim = on ? null : TextStyle(color: Theme.of(context).disabledColor);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const ListTile(title: Text('Offline'), dense: true),
+        SwitchListTile(
+          value: on,
+          title: const Text('Keep music on this phone'),
+          subtitle: const Text(
+              'Tracks you play are saved while you are at home, so they play '
+              'away from home and when home can\'t be reached.'),
+          onChanged: (v) => v ? _turnOn() : _turnOff(context),
+        ),
+        ListTile(
+          title: Text('Room for music', style: dim),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Slider(
+                value: showGb.toDouble(),
+                min: 1,
+                max: maxGb.toDouble(),
+                divisions: maxGb > 1 ? maxGb - 1 : null,
+                label: '$showGb GB',
+                onChanged:
+                    on ? (v) => setState(() => _dragging = v) : null,
+                onChangeEnd: (v) async {
+                  setState(() => _dragging = null);
+                  await _app.setCacheBudget(v.round() * gigabyte);
+                  _remeasure();
+                },
+              ),
+              Text(_summary(held, showGb * gigabyte, space), style: dim),
+            ],
+          ),
+        ),
+        if (on) ..._notices(context, space),
+        ListTile(
+          leading: const Icon(Icons.library_music_outlined),
+          title: Text('See what is here', style: dim),
+          onTap: on
+              ? () => Navigator.push(
+                  context, MaterialPageRoute(builder: (_) => const OfflinePage()))
+              : null,
+        ),
+        if (on && held > 0)
+          ListTile(
+            leading: const Icon(Icons.delete_outline),
+            title: const Text('Clear it now'),
+            subtitle: Text('Frees ${formatBytes(held)}'),
+            onTap: () => _clear(context),
+          ),
+      ],
+    );
+  }
+
+  /// What is held, what it may grow to, and what the phone has left.
+  String _summary(int held, int budget, StorageSpace? space) {
+    final line = 'Holding ${formatBytes(held)} of ${formatBytes(budget)}';
+    return space == null ? line : '$line · ${formatBytes(space.free)} free on this phone';
+  }
+
+  /// Why nothing is being saved, when that is the case. Worth saying: the
+  /// feature looks broken otherwise.
+  List<Widget> _notices(BuildContext context, StorageSpace? space) {
+    final cache = _app.cache;
+    final String? why;
+    if (space != null && space.full >= CacheStore.brake) {
+      why = 'This phone is nearly full, so nothing new is being saved. '
+          'Clear the cache, or remove other files, to start again.';
+    } else if (cache.budget <= 0) {
+      why = 'No room is set aside, so nothing is being saved.';
+    } else if (cache.pinnedFillBudget) {
+      why = 'Pinned music fills the space, so nothing new is being saved. '
+          'Unpin something, or allow more room.';
+    } else {
+      why = null;
+    }
+    if (why == null) return const [];
+    return [
+      ListTile(
+        leading: Icon(Icons.warning_amber_rounded, color: Theme.of(context).colorScheme.error),
+        title: Text(why, style: Theme.of(context).textTheme.bodyMedium),
+      ),
+    ];
+  }
+
+  Future<void> _turnOn() async {
+    await _app.setCacheEnabled(true);
+    _remeasure();
+  }
+
+  /// Turning it off deletes what is held, so it asks first.
+  Future<void> _turnOff(BuildContext context) async {
+    final cache = _app.cache;
+    if (cache.bytes > 0 && !await _confirm(context, 'Stop keeping music here?')) return;
+    await _app.setCacheEnabled(false);
+    _remeasure();
+  }
+
+  Future<void> _clear(BuildContext context) async {
+    if (!await _confirm(context, 'Clear the music kept here?')) return;
+    await _app.cache.clear();
+    _remeasure();
+  }
+
+  Future<bool> _confirm(BuildContext context, String title) async {
+    final cache = _app.cache;
+    final pinned = cache.entries.where((e) => e.pinned).length;
+    final agreed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(
+          'This deletes the ${formatBytes(cache.bytes)} of music on this phone'
+          '${pinned == 0 ? '' : ', including $pinned pinned ${pinned == 1 ? 'track' : 'tracks'}'}.\n\n'
+          'Your library at home is untouched, and anything you play again is '
+          'saved afresh.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep it')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    return agreed == true;
+  }
+}
+
+/// Sizes as people read them: tenths of a gigabyte until it is big enough
+/// not to matter, megabytes below that.
+String formatBytes(int bytes) {
+  if (bytes >= gigabyte) {
+    final gb = bytes / gigabyte;
+    return gb < 10 ? '${gb.toStringAsFixed(1)} GB' : '${gb.round()} GB';
+  }
+  return '${(bytes / (1024 * 1024)).round()} MB';
 }
 
 /// The version and build, for reports from testers.

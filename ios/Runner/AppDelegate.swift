@@ -17,7 +17,65 @@ import UIKit
     GeneratedPluginRegistrant.register(with: engine)
     CarPlayBridge.shared.attach(engine.binaryMessenger)
     SystemVolume.shared.attach(engine.binaryMessenger)
+    DeviceStorage.shared.attach(engine.binaryMessenger)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+}
+
+/// Room on the volume the offline cache lives on, and keeping the cache out
+/// of the user's backups (lib/cache/device_storage.dart).
+final class DeviceStorage {
+  static let shared = DeviceStorage()
+
+  func attach(_ messenger: FlutterBinaryMessenger) {
+    FlutterMethodChannel(name: "org.minstrelplayer/storage", binaryMessenger: messenger)
+      .setMethodCallHandler { call, result in
+        switch call.method {
+        case "space":
+          result(Self.space())
+        case "excludeFromBackup":
+          // Several gigabytes of cached music would otherwise go into iCloud
+          // backup, where it would be pointless: it is a copy of a library
+          // that lives at home and is re-fetched from there.
+          guard let path = call.arguments as? String else { result(nil); return }
+          var url = URL(fileURLWithPath: path)
+          var values = URLResourceValues()
+          values.isExcludedFromBackup = true
+          try? url.setResourceValues(values)
+          result(nil)
+        default:
+          result(FlutterMethodNotImplemented)
+        }
+      }
+  }
+
+  /// What iOS says an app may still write.
+  ///
+  /// The "important usage" figure is the one Settings shows and the one a
+  /// download should trust: it counts room the system would reclaim by
+  /// purging other apps' caches. It is optional, though, and simulators
+  /// report none of these, so it falls back to the plain free space and
+  /// then to the file system's own figures.
+  private static func space() -> [String: NSNumber]? {
+    // The app's own home directory: always there, and on the same volume as
+    // Application Support, where the cache lives. Asking about Application
+    // Support itself fails on a fresh install, before anything creates it.
+    let url = URL(fileURLWithPath: NSHomeDirectory())
+    let values = try? url.resourceValues(forKeys: [
+      .volumeAvailableCapacityForImportantUsageKey,
+      .volumeAvailableCapacityKey,
+      .volumeTotalCapacityKey,
+    ])
+    var free = values?.volumeAvailableCapacityForImportantUsage
+    if free == nil, let plain = values?.volumeAvailableCapacity { free = Int64(plain) }
+    var total = values?.volumeTotalCapacity.map { Int64($0) }
+    if free == nil || total == nil {
+      let attrs = try? FileManager.default.attributesOfFileSystem(forPath: url.path)
+      free = free ?? (attrs?[.systemFreeSize] as? NSNumber)?.int64Value
+      total = total ?? (attrs?[.systemSize] as? NSNumber)?.int64Value
+    }
+    guard let free, let total, total > 0 else { return nil }
+    return ["free": NSNumber(value: free), "total": NSNumber(value: total)]
   }
 }
 
