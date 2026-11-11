@@ -3,6 +3,7 @@ import 'package:minstrel_core/minstrel_core.dart';
 
 import '../app_services.dart';
 import '../cache/cache_store.dart';
+import '../download/save_copy.dart';
 import '../pages/settings_page.dart' show formatBytes;
 import 'relay_prompt.dart';
 
@@ -14,6 +15,7 @@ enum QueueAction {
   downloadAndPin,
   unpin,
   removeFromPhone,
+  saveCopy,
 }
 
 /// Bottom sheet offering Play now / Play next / Add to queue for a track or
@@ -59,6 +61,18 @@ Future<void> showQueueActions(
             title: const Text('Add to queue'),
             onTap: () => Navigator.pop(context, QueueAction.addToQueue),
           ),
+          // Not music: there is nothing to keep for listening, so it is
+          // fetched once and handed to the system's own save sheet.
+          if (!audio) ...[
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.save_alt),
+              title: const Text('Save a copy…'),
+              subtitle: const Text('Choose where it goes: Downloads, Files, a drive'),
+              onTap: () => Navigator.pop(context, QueueAction.saveCopy),
+            ),
+            const Divider(height: 1),
+          ],
           // Only music is kept here: the cache exists so music plays with no
           // network, and a film or a photo neither plays nor belongs in a
           // space set aside for listening.
@@ -237,6 +251,10 @@ Future<void> runQueueAction(
       messenger.showSnackBar(const SnackBar(content: Text('No tracks found')));
       return;
     }
+    if (action == QueueAction.saveCopy) {
+      if (context.mounted) await saveACopy(context, items.first);
+      return;
+    }
     if (action == QueueAction.unpin) {
       final cache = AppServices.instance.cache;
       var touched = 0;
@@ -271,7 +289,8 @@ Future<void> runQueueAction(
       QueueAction.download ||
       QueueAction.downloadAndPin ||
       QueueAction.unpin ||
-      QueueAction.removeFromPhone =>
+      QueueAction.removeFromPhone ||
+      QueueAction.saveCopy =>
         0, // handled above
     };
     // Tracks from a paired home only reach a renderer if this phone passes
@@ -288,7 +307,8 @@ Future<void> runQueueAction(
         QueueAction.download ||
         QueueAction.downloadAndPin ||
         QueueAction.unpin ||
-        QueueAction.removeFromPhone =>
+        QueueAction.removeFromPhone ||
+        QueueAction.saveCopy =>
           0,
       };
     }
@@ -303,7 +323,8 @@ Future<void> runQueueAction(
           QueueAction.download ||
           QueueAction.downloadAndPin ||
           QueueAction.unpin ||
-          QueueAction.removeFromPhone =>
+          QueueAction.removeFromPhone ||
+          QueueAction.saveCopy =>
             '',
         },
         if (player.needRelay.isNotEmpty)
