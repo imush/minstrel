@@ -248,7 +248,10 @@ class AppServices {
 
   /// Keeps [items] on this device whether or not they are played, for a
   /// flight or a drive out of signal.
-  int download(Iterable<DidlItem> items, {bool pin = false}) =>
+  ({int queued, int waiting, int held, int unplayable}) download(
+    Iterable<DidlItem> items, {
+    bool pin = false,
+  }) =>
       cacheFetcher.request(items, pin: pin);
 
   /// Whether to keep music on this device at all.  /// Whether to keep music on this device at all. Turning it off empties

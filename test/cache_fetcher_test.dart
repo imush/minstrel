@@ -247,16 +247,21 @@ void main() {
 
   group('asked for outright', () {
     /// Downloading, as the browse page would: whatever the network.
-    Future<int> download(List<String> paths, {bool pin = false}) async {
-      final n = fetcher.request([for (final p in paths) item(res(p))], pin: pin);
+    Future<({int queued, int waiting, int held, int unplayable})> download(
+      List<String> paths, {
+      bool pin = false,
+      String mime = 'audio/flac',
+    }) async {
+      final done = fetcher.request(
+          [for (final p in paths) item(res(p, mime: mime))], pin: pin);
       await fetcher.pump();
       await fetcher.saved;
-      return n;
+      return done;
     }
 
     test('a download happens away from home too: that is the point', () async {
       home = false; // the hotel the night before the flight
-      expect(await download(['a.flac']), 1);
+      expect((await download(['a.flac'])).queued, 1);
       expect(store.entry('192.168.1.9:9790/a.flac'), isNotNull);
       expect(fetcher.wanted, isEmpty);
     });
@@ -280,8 +285,49 @@ void main() {
 
     test('a track already held can still be pinned', () async {
       await play('a.flac');
-      expect(await download(['a.flac'], pin: true), 0, reason: 'nothing to fetch');
+      final again = await download(['a.flac'], pin: true);
+      expect(again.queued, 0, reason: 'nothing to fetch');
+      expect(again.held, 1, reason: 'it is here, which is not the same as nothing');
       expect(store.entry('192.168.1.9:9790/a.flac')!.pinned, isTrue);
+    });
+
+    test('asking again for what is still waiting does not count twice', () async {
+      // Asked twice before the fetch has had a chance to run. A request
+      // ignores the network gate, so pumping between the two would have
+      // fetched it and the second would rightly say it is here.
+      final first = fetcher.request([item(res('a.flac'))]);
+      final second = fetcher.request([item(res('a.flac'))]);
+      expect(first.queued, 1);
+      expect(second.queued, 0);
+      expect(second.waiting, 1, reason: 'it was already asked for');
+      expect(fetcher.wanted, hasLength(1), reason: 'and only wanted once');
+
+      await fetcher.pump();
+      await fetcher.saved;
+      expect(store.entry('192.168.1.9:9790/a.flac'), isNotNull);
+      expect(fetched, hasLength(1), reason: 'fetched once, not twice');
+    });
+
+    test('a format this device cannot play is said so, not called held', () async {
+      // Reported as "already here" once, which was plainly untrue.
+      final done = await download(['odd.ra'], mime: 'audio/vnd.rn-realaudio');
+      expect(done.unplayable, 1);
+      expect(done.held, 0);
+      expect(done.queued, 0);
+      expect(fetcher.wanted, isEmpty);
+    });
+
+    test('a mixed album reports each part of what happened', () async {
+      await play('here.flac');
+      home = false;
+      final done = fetcher.request([
+        item(res('here.flac')),
+        item(res('new.flac')),
+        item(res('odd.ra', mime: 'audio/vnd.rn-realaudio')),
+      ]);
+      expect(done.held, 1);
+      expect(done.queued, 1);
+      expect(done.unplayable, 1);
     });
 
     test('what a download needs is known before it starts', () async {

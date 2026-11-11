@@ -218,18 +218,38 @@ Future<void> _keepOnPhone(
     );
     return;
   }
-  final added = app.download(music, pin: pin);
-  messenger.showSnackBar(SnackBar(
-    content: Text([
-      if (added == 0)
-        'Already on this device'
-      else
-        'Keeping ${added == 1 ? '1 track' : '$added tracks'} on this device'
-            '${pin ? ', pinned' : ''}'
-            '${room.unknown > 0 ? '' : ' · ${formatBytes(room.bytes)}'}',
-      if (skipped > 0) '$skipped not music, left alone',
-    ].join('. ')),
-  ));
+  final done = app.download(music, pin: pin);
+  messenger.showSnackBar(SnackBar(content: Text(_whatHappened(done, pin, room, skipped))));
+}
+
+String _tracks(int n) => n == 1 ? '1 track' : '$n tracks';
+
+/// Says what a request actually did, rather than treating everything that
+/// queued nothing as "already here": a format this device cannot play and a
+/// track already waiting to be fetched are neither of them that.
+String _whatHappened(
+  ({int queued, int waiting, int held, int unplayable}) done,
+  bool pin,
+  ({int bytes, int unknown, int room}) room,
+  int skipped,
+) {
+  final nothingDone = done.queued == 0 && done.waiting == 0;
+  if (nothingDone && done.held > 0 && done.unplayable == 0) {
+    return 'Already on this device';
+  }
+  if (nothingDone && done.held == 0 && done.unplayable > 0) {
+    return 'Nothing here this device can play';
+  }
+  return [
+    if (done.queued > 0)
+      'Keeping ${_tracks(done.queued)} on this device${pin ? ', pinned' : ''}'
+          '${room.unknown > 0 ? '' : ' · ${formatBytes(room.bytes)}'}',
+    if (done.waiting > 0) '${_tracks(done.waiting)} already waiting',
+    if (done.held > 0) '${done.held} already here',
+    if (done.unplayable > 0)
+      '${_tracks(done.unplayable)} this device can\'t play',
+    if (skipped > 0) '$skipped not music',
+  ].join(' · ');
 }
 
 /// Carries out [action], reporting the result in a snack bar.

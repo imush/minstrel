@@ -60,6 +60,21 @@ class WantedTrack {
   }
 }
 
+/// What became of one wish.
+enum _Wish {
+  /// Newly asked for.
+  queued,
+
+  /// Was already waiting to be fetched.
+  waiting,
+
+  /// Already on this device, at this quality or better.
+  held,
+
+  /// Nothing here this device could play, so nothing to keep.
+  unplayable,
+}
+
 /// Fills the cache: with what has been played, and with what has been asked
 /// for outright.
 ///
@@ -112,23 +127,46 @@ class CacheFetcher extends ChangeNotifier {
   /// Notes that [item] was played, so a copy is worth keeping.
   ///
   /// [resource] is the one playback chose, which decides the quality kept.
-  void notePlayed(DidlItem item, DidlResource resource) =>
-      _want(item, resource, requested: false, pin: false);
+  void notePlayed(DidlItem item, DidlResource resource) {
+    _want(item, resource, requested: false, pin: false);
+  }
 
   /// Asks for [items] to be kept on this device, whether or not they are
-  /// played. Returns how many were added; those already held are skipped.
+  /// played, and says what became of each.
   ///
-  /// [pin] keeps them from ever being evicted. Without it they age out like
-  /// anything else, which for a trip is usually what is wanted: they are
-  /// the newest thing in the cache and so the last to go.
-  int request(Iterable<DidlItem> items, {bool pin = false}) {
-    var added = 0;
+  /// Every track is looked at on its own, so a half-finished album tops
+  /// itself up rather than being taken for done.
+  ///
+  /// [pin] keeps them from ever being evicted, and pins what is already
+  /// held. Without it they age out like anything else, which for a trip is
+  /// usually what is wanted: they are the newest thing in the cache and so
+  /// the last to go.
+  ({int queued, int waiting, int held, int unplayable}) request(
+    Iterable<DidlItem> items, {
+    bool pin = false,
+  }) {
+    var queued = 0;
+    var waiting = 0;
+    var held = 0;
+    var unplayable = 0;
     for (final item in items) {
       final res = ResourceSelector.select(item, _localSinks);
-      if (res == null) continue; // nothing this device could play
-      if (_want(item, res, requested: true, pin: pin)) added++;
+      if (res == null) {
+        unplayable++; // no format this device's player accepts
+        continue;
+      }
+      switch (_want(item, res, requested: true, pin: pin)) {
+        case _Wish.queued:
+          queued++;
+        case _Wish.waiting:
+          waiting++;
+        case _Wish.held:
+          held++;
+        case _Wish.unplayable:
+          unplayable++;
+      }
     }
-    return added;
+    return (queued: queued, waiting: waiting, held: held, unplayable: unplayable);
   }
 
   /// What [items] would take up, and what the cache has room for, so a
@@ -151,14 +189,14 @@ class CacheFetcher extends ChangeNotifier {
     return (bytes: bytes, unknown: unknown, room: store.roomForBatch);
   }
 
-  bool _want(DidlItem item, DidlResource resource,
+  _Wish _want(DidlItem item, DidlResource resource,
       {required bool requested, required bool pin}) {
     final key = CacheStore.keyFor(resource.uri);
-    if (key == null) return false; // a relay URL, or our own cached copy
+    if (key == null) return _Wish.unplayable; // a relay URL, or our own copy
     if (!store.wants(key, resource)) {
       // Already held at this quality or better; pin it if that was asked.
       if (pin) unawaited(store.setPinned(key, true));
-      return false;
+      return _Wish.held;
     }
     final had = _wanted.indexWhere((w) => w.key == key);
     // An outright request outranks a note that it was played, and keeping
@@ -172,7 +210,9 @@ class CacheFetcher extends ChangeNotifier {
     unawaited(_saveQueue());
     notifyListeners();
     unawaited(pump());
-    return true;
+    // Asking again for something still waiting has changed nothing worth
+    // telling anybody about.
+    return had >= 0 ? _Wish.waiting : _Wish.queued;
   }
 
   static List<ProtocolInfo> get _localSinks =>
