@@ -348,6 +348,31 @@ void main() {
       expect(await store.dir.list().where((f) => !f.path.endsWith('index.json')).isEmpty, isTrue);
     });
 
+    test('can free space while keeping what was pinned on purpose', () async {
+      await keep('kept.flac', 2 * mb);
+      await store.setPinned('192.168.1.9:9790/kept.flac', true);
+      await keep('loose.flac', 3 * mb);
+
+      expect(store.unpinnedBytes, 3 * mb);
+      expect(await store.clearUnpinned(), 3 * mb);
+      expect(store.bytes, 2 * mb);
+      expect(store.entry('192.168.1.9:9790/kept.flac'), isNotNull);
+      expect(store.entry('192.168.1.9:9790/loose.flac'), isNull);
+    });
+
+    test('freeing space when nothing is pinned empties it', () async {
+      await keep('a.flac', 2 * mb);
+      expect(await store.clearUnpinned(), 2 * mb);
+      expect(store.entries, isEmpty);
+    });
+
+    test('the files of what was freed are gone, not just forgotten', () async {
+      final loose = await keep('loose.flac', 2 * mb);
+      final file = store.fileOf(loose!);
+      await store.clearUnpinned();
+      expect(file.existsSync(), isFalse);
+    });
+
     test('the default budget is a tenth of what is free, in whole gigabytes', () {
       expect(CacheStore.defaultBudget(const StorageSpace(free: 64 * gigabyte, total: 128 * gigabyte)),
           6 * gigabyte);

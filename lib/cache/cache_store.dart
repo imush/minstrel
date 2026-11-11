@@ -190,6 +190,9 @@ class CacheStore extends ChangeNotifier {
   int get pinnedBytes =>
       _entries.values.where((e) => e.pinned).fold(0, (n, e) => n + e.bytes);
 
+  /// What could be freed without losing anything deliberately kept.
+  int get unpinnedBytes => bytes - pinnedBytes;
+
   /// Nothing more can be kept because pinned music fills the budget. Worth
   /// saying out loud: the cache looks broken otherwise.
   bool get pinnedFillBudget => enabled && budget > 0 && pinnedBytes >= budget;
@@ -396,6 +399,21 @@ class CacheStore extends ChangeNotifier {
     await _remove(e);
     await _save();
     notifyListeners();
+  }
+
+  /// Empties everything but the pins, and returns what that freed.
+  ///
+  /// The usual way to want space back: whatever was kept on purpose stays,
+  /// and what merely accumulated goes.
+  Future<int> clearUnpinned() async {
+    var freed = 0;
+    for (final held in _entries.values.where((e) => !e.pinned).toList()) {
+      freed += held.bytes;
+      await _remove(held);
+    }
+    await _save();
+    notifyListeners();
+    return freed;
   }
 
   /// Empties the cache, pins included: this is the owner saying so.

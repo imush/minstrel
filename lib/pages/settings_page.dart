@@ -179,6 +179,13 @@ class _OfflineCacheState extends State<_OfflineCache> {
                   // Dropping this clears the slider back to what is stored,
                   // which is what shows if the change is turned down.
                   setState(() => _dragging = null);
+                  // Pins have to fit: they are the one thing eviction
+                  // cannot reclaim, so a limit below them would be a limit
+                  // the cache could never keep.
+                  if (wanted < cache.pinnedBytes) {
+                    await _refuseShrink(context);
+                    return;
+                  }
                   if (wanted < cache.bytes && !await _confirmShrink(context, wanted)) {
                     return;
                   }
@@ -199,13 +206,23 @@ class _OfflineCacheState extends State<_OfflineCache> {
                   context, MaterialPageRoute(builder: (_) => const OfflinePage()))
               : null,
         ),
-        if (on && held > 0)
+        if (on && held > 0) ...[
+          // Only worth offering apart when a pin would survive it.
+          if (cache.pinnedBytes > 0 && cache.unpinnedBytes > 0)
+            ListTile(
+              leading: const Icon(Icons.cleaning_services_outlined),
+              title: const Text('Free up space'),
+              subtitle: Text('Removes ${formatBytes(cache.unpinnedBytes)}, '
+                  'keeping the ${formatBytes(cache.pinnedBytes)} you pinned'),
+              onTap: () => _freeUpSpace(context),
+            ),
           ListTile(
             leading: const Icon(Icons.delete_outline),
-            title: const Text('Clear it now'),
+            title: Text(cache.pinnedBytes > 0 ? 'Clear everything, pinned included' : 'Clear it now'),
             subtitle: Text('Frees ${formatBytes(held)}'),
             onTap: () => _clear(context),
           ),
+        ],
       ],
     );
   }
@@ -248,7 +265,6 @@ class _OfflineCacheState extends State<_OfflineCache> {
     // Pins are not evicted, so they are not what gets freed.
     final loose = cache.bytes - cache.pinnedBytes;
     final going = (cache.bytes - wanted).clamp(0, loose);
-    final stuck = cache.pinnedBytes > wanted;
     final agreed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -261,9 +277,6 @@ class _OfflineCacheState extends State<_OfflineCache> {
             'Everything here is pinned, so nothing can be removed to fit '
                 '${formatBytes(wanted)}.',
           if (cache.pinnedBytes > 0 && going > 0) 'Pinned music is kept.',
-          if (stuck)
-            'Pinned music alone takes ${formatBytes(cache.pinnedBytes)}, so '
-                'nothing new will be kept until you unpin some.',
         ].join(' ')),
         actions: [
           TextButton(
@@ -287,6 +300,60 @@ class _OfflineCacheState extends State<_OfflineCache> {
     final cache = _app.cache;
     if (cache.bytes > 0 && !await _confirm(context, 'Stop keeping music here?')) return;
     await _app.setCacheEnabled(false);
+    _remeasure();
+  }
+
+  /// Says why the limit cannot go that low, rather than quietly setting a
+  /// limit the cache would always be over.
+  Future<void> _refuseShrink(BuildContext context) async {
+    final pinned = _app.cache.pinnedBytes;
+    final least = (pinned + gigabyte - 1) ~/ gigabyte;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Pinned music needs the room'),
+        content: Text(
+          'You have pinned ${formatBytes(pinned)}, and pinned music is never '
+          'removed to make room. Unpin some of it, or allow at least '
+          '$least GB.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const OfflinePage()));
+            },
+            child: const Text('See what is pinned'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Removes what merely accumulated, keeping what was pinned on purpose.
+  Future<void> _freeUpSpace(BuildContext context) async {
+    final cache = _app.cache;
+    final going = cache.unpinnedBytes;
+    final agreed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Free ${formatBytes(going)}?'),
+        content: Text(
+          'This removes the music that built up from listening, and keeps the '
+          '${formatBytes(cache.pinnedBytes)} you pinned.\n\n'
+          'Your library at home is untouched, and anything you play again is '
+          'kept afresh.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Free it')),
+        ],
+      ),
+    );
+    if (agreed != true) return;
+    await cache.clearUnpinned();
     _remeasure();
   }
 
