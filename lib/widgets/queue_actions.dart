@@ -28,6 +28,7 @@ Future<void> showQueueActions(
   Future<void> Function()? playNow,
   VoidCallback? info,
   bool? pinned,
+  bool audio = true,
 }) async {
   final action = await showModalBottomSheet<QueueAction>(
     context: context,
@@ -58,7 +59,10 @@ Future<void> showQueueActions(
             title: const Text('Add to queue'),
             onTap: () => Navigator.pop(context, QueueAction.addToQueue),
           ),
-          if (AppServices.instance.cache.enabled) ...[
+          // Only music is kept here: the cache exists so music plays with no
+          // network, and a film or a photo neither plays nor belongs in a
+          // space set aside for listening.
+          if (audio && AppServices.instance.cache.enabled) ...[
             const Divider(height: 1),
             // Already here: offered as what can be done to it instead.
             if (pinned != null) ...[
@@ -173,7 +177,16 @@ Future<void> _keepOnPhone(
   required bool pin,
 }) async {
   final app = AppServices.instance;
-  final room = app.cacheFetcher.estimate(items);
+  // A folder can hold films and pictures alongside the music.
+  final music = items.where((i) => i.isAudio).toList();
+  if (music.isEmpty) {
+    messenger.showSnackBar(const SnackBar(
+      content: Text('Only music is kept on this device'),
+    ));
+    return;
+  }
+  final skipped = items.length - music.length;
+  final room = app.cacheFetcher.estimate(music);
   if (room.bytes > room.room) {
     await showDialog<void>(
       context: context,
@@ -191,13 +204,17 @@ Future<void> _keepOnPhone(
     );
     return;
   }
-  final added = app.download(items, pin: pin);
+  final added = app.download(music, pin: pin);
   messenger.showSnackBar(SnackBar(
-    content: Text(added == 0
-        ? 'Already on this device'
-        : 'Keeping ${added == 1 ? '1 track' : '$added tracks'} on this device'
+    content: Text([
+      if (added == 0)
+        'Already on this device'
+      else
+        'Keeping ${added == 1 ? '1 track' : '$added tracks'} on this device'
             '${pin ? ', pinned' : ''}'
-            '${room.unknown > 0 ? '' : ' · ${formatBytes(room.bytes)}'}'),
+            '${room.unknown > 0 ? '' : ' · ${formatBytes(room.bytes)}'}',
+      if (skipped > 0) '$skipped not music, left alone',
+    ].join('. ')),
   ));
 }
 

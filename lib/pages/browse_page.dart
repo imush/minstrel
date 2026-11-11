@@ -252,7 +252,8 @@ class _BrowsePageState extends State<BrowsePage> {
                             playNowLabel: 'Play from here',
                             playNow: () => _play(item),
                             info: () => showTrackInfo(context, item),
-                            tracks: () async => [item]),
+                            tracks: () async => [item],
+                            audio: item.isAudio),
                       ),
                   };
                 },
