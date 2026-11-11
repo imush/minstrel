@@ -126,7 +126,17 @@ class _OfflineCacheState extends State<_OfflineCache> {
   /// While a finger is on the slider, what it says rather than what is set.
   double? _dragging;
 
-  void _remeasure() => setState(() => _space = DeviceStorage.space());
+  /// Asks the device for its free space again, after something changed it.
+  ///
+  /// The future is made first and only then stored: handing setState a
+  /// closure that returns one is an error, and an arrow body returns what
+  /// it assigns.
+  void _remeasure() {
+    final asking = DeviceStorage.space();
+    setState(() {
+      _space = asking;
+    });
+  }
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
