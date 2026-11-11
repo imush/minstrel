@@ -34,9 +34,7 @@ Future<void> saveACopy(BuildContext context, DidlItem item, {Rect? from}) async 
   final cancelled = _Flag();
   File? file;
   try {
-    // Whatever a previous save left behind: the sheet copies what it is
-    // given, so nothing here needs to outlive the share.
-    if (await dir.exists()) await dir.delete(recursive: true);
+    await cleanSaveScratch();
     await dir.create(recursive: true);
     file = File('${dir.path}/${saveFileName(item, res)}');
 
@@ -58,25 +56,51 @@ Future<void> saveACopy(BuildContext context, DidlItem item, {Rect? from}) async 
         progress, cancelled);
     close();
     if (cancelled.set) return;
-    if (!ok) {
-      messenger.showSnackBar(SnackBar(content: Text('Couldn\'t fetch ${item.title}')));
+    if (ok != null) {
+      if (context.mounted) await _explain(context, item.title, ok);
       return;
     }
 
-    await SharePlus.instance.share(ShareParams(
+    // An iPad needs somewhere to put the sheet, or sharing throws.
+    final where = from ??
+        (context.mounted ? Offset.zero & MediaQuery.sizeOf(context) : null);
+    final shared = await SharePlus.instance.share(ShareParams(
       files: [XFile(file.path, mimeType: res.mimeType)],
       fileNameOverrides: [saveFileName(item, res)],
-      sharePositionOrigin: from,
+      sharePositionOrigin: where,
     ));
+    if (shared.status == ShareResultStatus.unavailable && context.mounted) {
+      await _explain(context, item.title,
+          'This device offered nowhere to put it. Nothing was saved.');
+    } else if (shared.status == ShareResultStatus.dismissed) {
+      messenger.showSnackBar(const SnackBar(content: Text('Not saved')));
+    }
   } on Object catch (e) {
-    messenger.showSnackBar(SnackBar(content: Text('Couldn\'t save ${item.title}: $e')));
+    if (context.mounted) await _explain(context, item.title, '$e');
   } finally {
     progress.dispose();
-    // The sheet has taken its own copy by now.
+  }
+}
+
+/// Throws away what saving a copy leaves behind.
+///
+/// Two directories, because the share sheet is handed a file by copying it
+/// into a folder of its own: ours, and that copy. Neither is cleaned up by
+/// anything else until the next share, so a film can sit in this app's
+/// cache taking gigabytes — which on a music player is the last thing
+/// anybody expects to be holding.
+///
+/// Done on the way in rather than on the way out: an app receiving the file
+/// may still be reading it when the sheet closes, so the copies live until
+/// the next save or the next start.
+Future<void> cleanSaveScratch() async {
+  final tmp = (await getTemporaryDirectory()).path;
+  for (final name in ['saving', 'share_plus']) {
     try {
+      final dir = Directory('$tmp/$name');
       if (await dir.exists()) await dir.delete(recursive: true);
     } on FileSystemException {
-      // It will go with the next save, or with the temporary directory.
+      // In use, or already gone; the next start tries again.
     }
   }
 }
@@ -130,7 +154,9 @@ String _safe(String name) {
   return clean.isEmpty || clean == '.' || clean == '..' ? 'download' : clean;
 }
 
-Future<bool> _fetch(
+/// Fetches [from] into [into]. Null when that worked, otherwise what went
+/// wrong, in words worth showing somebody.
+Future<String?> _fetch(
   Uri from,
   File into,
   ValueNotifier<double?> progress,
@@ -140,15 +166,23 @@ Future<bool> _fetch(
   IOSink? sink;
   try {
     final res = await client.getUrl(from).then((r) => r.close());
-    if (res.statusCode != HttpStatus.ok) {
+    // Some servers answer every request with a range, whether or not one
+    // was asked for.
+    if (res.statusCode != HttpStatus.ok && res.statusCode != HttpStatus.partialContent) {
       await res.drain<void>();
-      return false;
+      return switch (res.statusCode) {
+        HttpStatus.notFound => 'The server no longer has this file (404).',
+        HttpStatus.forbidden => 'The server refused it (403). A home can be set '
+            'to allow video only on its own network.',
+        HttpStatus.unauthorized => 'The server wanted credentials we do not have (401).',
+        final code => 'The server answered $code.',
+      };
     }
     final total = res.contentLength;
     var got = 0;
     sink = into.openWrite();
     await for (final chunk in res) {
-      if (cancelled.set) return false;
+      if (cancelled.set) return null;
       sink.add(chunk);
       got += chunk.length;
       if (total > 0) progress.value = got / total;
@@ -156,15 +190,35 @@ Future<bool> _fetch(
     await sink.flush();
     await sink.close();
     sink = null;
+    if (got == 0) return 'The server sent nothing at all.';
     // A part of a film is not worth handing anybody.
-    return total < 0 || await into.length() == total;
-  } on Object {
-    return false;
+    final written = await into.length();
+    if (total > 0 && written != total) {
+      return 'The transfer stopped early: ${written ~/ 1048576} MB of '
+          '${total ~/ 1048576} MB.';
+    }
+    return null;
+  } on Object catch (e) {
+    return '$e';
   } finally {
     await sink?.close();
     client.close(force: true);
   }
 }
+
+/// Says why nothing was saved, somewhere it can be read rather than in a
+/// snack bar that has gone by the time it is noticed.
+Future<void> _explain(BuildContext context, String title, String why) =>
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Couldn\'t save it'),
+        content: Text('$title\n\n$why'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+        ],
+      ),
+    );
 
 Future<void> _showProgress(
   BuildContext context,

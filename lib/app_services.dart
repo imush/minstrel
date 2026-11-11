@@ -14,6 +14,7 @@ import 'cache/cache_fetcher.dart';
 import 'cache/cache_store.dart';
 import 'cache/device_storage.dart';
 import 'car/car_library.dart';
+import 'download/save_copy.dart';
 import 'car/car_services.dart';
 import 'car/carplay.dart';
 import 'homes.dart';
@@ -121,6 +122,10 @@ class AppServices {
     if (saved == null) await prefs.setInt(_cacheBudgetKey, cache.budget);
     await cache.load();
     await DeviceStorage.excludeFromBackup(dir.path);
+
+    // A film saved last time may still be sitting in the cache directory,
+    // along with the copy the share sheet was handed.
+    unawaited(cleanSaveScratch());
 
     cacheFetcher = CacheFetcher(cache, homes.proxy);
     await cacheFetcher.load();
