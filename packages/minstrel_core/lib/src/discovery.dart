@@ -9,6 +9,31 @@ import 'services.dart';
 import 'soap.dart';
 import 'ssdp.dart';
 
+/// A server a launchpad listed that couldn't be reached.
+///
+/// Kept so that a home which connects but shows nothing can say what went
+/// wrong: without this the failure is invisible, and an empty list looks
+/// the same whether the launchpad has no servers or none of them answered.
+class ServerProblem {
+  /// The description URL as fetched: through the proxy, so it names the
+  /// server behind `/u/`.
+  final Uri location;
+
+  final String error;
+
+  const ServerProblem(this.location, this.error);
+
+  /// The server as the launchpad knows it, for showing to somebody.
+  String get server {
+    final seg = location.pathSegments;
+    final at = seg.indexOf('u');
+    return at >= 0 && at + 1 < seg.length ? seg[at + 1] : location.authority;
+  }
+
+  @override
+  String toString() => '$server: $error';
+}
+
 class MediaServer {
   final UpnpDevice device;
   final ContentDirectory contentDirectory;
@@ -100,23 +125,42 @@ class DeviceRegistry {
   MediaServer? server(String udn) => _servers[udn] ?? _remote[udn];
 
   /// Replaces the servers of home [homeId] with those at [descriptions].
-  Future<void> setHomeServers(String homeId, String homeName, List<Uri> descriptions) async {
+  /// Returns the servers that were listed but didn't answer, so that a home
+  /// showing none of them can say why instead of looking empty.
+  Future<List<ServerProblem>> setHomeServers(
+      String homeId, String homeName, List<Uri> descriptions) async {
     final found = <String, MediaServer>{};
+    final problems = <ServerProblem>[];
     await Future.wait(descriptions.map((location) async {
       try {
+        var isServer = false;
         for (final d in await UpnpDevice.fetch(_http, location)) {
           final cd = d.isMediaServer ? d.service('ContentDirectory') : null;
           if (cd != null) {
+            isServer = true;
             found[d.udn] = MediaServer(d, ContentDirectory(_soap, cd), via: homeName, homeId: homeId);
           }
         }
-      } on Object {
-        // Listed by the launchpad but not answering; left out until it does.
+        if (!isServer) {
+          problems.add(ServerProblem(location, 'answered, but not as a media server'));
+        }
+      } on Object catch (e) {
+        // Listed by the launchpad but not answering; left out until it does,
+        // and reported so a home with no servers isn't silently empty.
+        problems.add(ServerProblem(location, _why(e)));
       }
     }));
     _remote.removeWhere((_, s) => s.homeId == homeId);
     _remote.addAll(found);
     _changes.add(null);
+    return problems;
+  }
+
+  /// One readable line from an exception, since these end up on screen.
+  static String _why(Object e) {
+    var text = e.toString().split('\n').first.trim();
+    if (text.startsWith('Exception: ')) text = text.substring(11);
+    return text.length > 120 ? '${text.substring(0, 117)}...' : text;
   }
 
   /// The servers reached through home [homeId], including any hidden by

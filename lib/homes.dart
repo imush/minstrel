@@ -46,6 +46,15 @@ class Homes extends ChangeNotifier {
   HomeStatus status(Home home) => proxy.status(home.id);
 
   final _canInvite = <String>{};
+  final _trouble = <String, List<String>>{};
+
+  /// Why a home that is connected is showing no servers, or fewer than the
+  /// launchpad listed. Empty when there is nothing to explain.
+  ///
+  /// Worth keeping: both the server fetch and the refresh itself fail
+  /// quietly by design, so without this an empty list looks identical
+  /// whether the launchpad has no servers or none of them could be reached.
+  List<String> trouble(Home home) => _trouble[home.id] ?? const [];
 
   /// Whether this device may invite others to [home], as of its last
   /// answer.
@@ -77,9 +86,22 @@ class Homes extends ChangeNotifier {
         updated = updated.copyWith(name: info.name);
       }
       if (!identical(updated, home)) await _replace(updated);
-      await _registry.setHomeServers(home.id, updated.name, [for (final s in info.servers) s.description]);
-    } on Object {
-      // The status shows why; servers already listed stay until it's back.
+      final problems = await _registry.setHomeServers(
+          home.id, updated.name, [for (final s in info.servers) s.description]);
+      _trouble[home.id] = [
+        if (problems.isNotEmpty)
+          problems.length == info.servers.length
+              ? (problems.length == 1
+                  ? 'The one server here didn\'t answer:'
+                  : 'None of the ${problems.length} servers here answered:')
+              : '${problems.length} of ${info.servers.length} servers didn\'t answer:',
+        for (final p in problems.take(3)) p.toString(),
+        if (problems.length > 3) 'and ${problems.length - 3} more',
+      ];
+    } on Object catch (e) {
+      // The status says whether the launchpad is reachable; this says what
+      // went wrong once it was.
+      _trouble[home.id] = ['Couldn\'t read the server list: $e'];
     }
     notifyListeners();
   }

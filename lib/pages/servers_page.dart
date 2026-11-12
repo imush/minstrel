@@ -296,19 +296,24 @@ class _HomeTile extends StatelessWidget {
       HomeState.unreachable || HomeState.notPaired =>
         (status.problem?.message ?? LaunchpadProblem.unreachable.message, error),
     };
+    // A home can be connected and still show nothing, when the launchpad
+    // lists servers that don't answer. Saying so beats an empty list.
+    final trouble = status.state == HomeState.connected ? homes.trouble(home) : const <String>[];
+    final lines = [
+      text,
+      // Which addresses were tried and what happened, to tell a closed
+      // router port from a launchpad that's down.
+      if (status.state == HomeState.unreachable) ...status.tried,
+      ...trouble,
+    ];
     return ListTile(
       leading: Icon(status.state == HomeState.connected ? Icons.home : Icons.home_outlined),
       title: Text(home.name),
       subtitle: Text(
-        [
-          text,
-          // Which addresses were tried and what happened, to tell a closed
-          // router port from a launchpad that's down.
-          if (status.state == HomeState.unreachable) ...status.tried,
-        ].join('\n'),
-        style: color == null ? null : TextStyle(color: color),
+        lines.join('\n'),
+        style: color == null && trouble.isEmpty ? null : TextStyle(color: color ?? error),
       ),
-      isThreeLine: status.state == HomeState.unreachable && status.tried.isNotEmpty,
+      isThreeLine: lines.length > 2,
       onTap: () => homes.refresh(home),
       trailing: PopupMenuButton<void>(
         tooltip: 'More',

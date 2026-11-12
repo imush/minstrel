@@ -59,4 +59,42 @@ void main() {
     // on a developer's LAN may be saved, after it.
     expect(saved.every((l) => l.first == description), isTrue);
   });
+
+  group('a home whose servers do not answer', () {
+    // The failure used to be swallowed: a home would connect, list nothing,
+    // and say nothing about why.
+    test('says which server failed and what happened', () async {
+      final dead = Uri.parse('http://127.0.0.1:1/h/abc/u/192.168.1.9:9791/device.xml');
+      final problems = await registry.setHomeServers('abc', 'Home', [dead]);
+
+      expect(problems, hasLength(1));
+      expect(problems.single.server, '192.168.1.9:9791',
+          reason: 'named as the launchpad knows it, not as a loopback URL');
+      expect(problems.single.error, isNotEmpty);
+      expect(problems.single.toString(), startsWith('192.168.1.9:9791: '));
+      expect(registry.homeServers('abc'), isEmpty);
+    });
+
+    test('a server that answers leaves nothing to explain', () async {
+      final problems = await registry.setHomeServers('abc', 'Home', [description]);
+      expect(problems, isEmpty);
+      expect(registry.homeServers('abc'), isNotEmpty);
+    });
+
+    test('one of two failing is reported while the other still works', () async {
+      final dead = Uri.parse('http://127.0.0.1:1/h/abc/u/192.168.1.23:49152/desc.xml');
+      final problems = await registry.setHomeServers('abc', 'Home', [description, dead]);
+      expect(problems, hasLength(1));
+      expect(problems.single.server, '192.168.1.23:49152');
+      expect(registry.homeServers('abc'), hasLength(1),
+          reason: 'the one that answered is still usable');
+    });
+
+    test('an error is one line, short enough to show', () async {
+      final problems = await registry.setHomeServers(
+          'abc', 'Home', [Uri.parse('http://127.0.0.1:1/h/abc/u/s/device.xml')]);
+      expect(problems.single.error, isNot(contains('\n')));
+      expect(problems.single.error.length, lessThanOrEqualTo(120));
+    });
+  });
 }
