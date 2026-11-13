@@ -15,6 +15,7 @@ import 'cache/cache_store.dart';
 import 'cache/device_storage.dart';
 import 'car/car_library.dart';
 import 'download/save_copy.dart';
+import 'car/cache_source.dart';
 import 'car/car_services.dart';
 import 'car/carplay.dart';
 import 'homes.dart';
@@ -41,6 +42,9 @@ class AppServices {
   /// Music kept on this device, and the fetch that fills it. Set up in
   /// [_startCache], which needs the application support directory.
   late final CacheStore cache;
+
+  /// The car's view of [cache], wired up before the store exists.
+  late final CacheSource carCache;
   late final CacheFetcher cacheFetcher;
 
   AppServices._(this.http_, this.registry, this.player, this.prefs, this.homes, this.car)
@@ -84,9 +88,14 @@ class AppServices {
       ..remember([for (final l in prefs.getStringList(_rememberedKey) ?? const <String>[]) Uri.parse(l)])
       ..onRemembered = (locations) =>
           unawaited(prefs.setStringList(_rememberedKey, [for (final l in locations) l.toString()]));
-    final car = CarLibrary(RegistrySource(registry), PhonePlayer(player), PrefsHistory(prefs));
+    // What is held on this device joins the servers in the car's menus; the
+    // store itself arrives later, in _startCache.
+    final carCache = CacheSource();
+    final car = CarLibrary(
+        MergedSource(RegistrySource(registry), carCache), PhonePlayer(player), PrefsHistory(prefs));
     player.attachCar(car);
     instance = AppServices._(client, registry, player, prefs, await Homes.start(registry), car);
+    instance.carCache = carCache;
     instance.homes.proxy.compression = prefs.getString(_compressionKey);
     player.relay = instance.relay;
     if (Platform.isIOS) unawaited(CarPlayBridge(car).start());
@@ -121,6 +130,7 @@ class AppServices {
     cache.budget = saved ?? CacheStore.defaultBudget(await DeviceStorage.space());
     if (saved == null) await prefs.setInt(_cacheBudgetKey, cache.budget);
     await cache.load();
+    carCache.attach(cache);
     await DeviceStorage.excludeFromBackup(dir.path);
 
     // A film saved last time may still be sitting in the cache directory,
