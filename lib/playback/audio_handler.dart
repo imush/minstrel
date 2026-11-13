@@ -305,9 +305,22 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
   /// from under playback would be worse than letting a track fail on its
   /// own, and it is the one the listener can see.
   Future<int> pruneQueue(bool Function(QueueEntry) reachable) async {
+    // Never while an output holds the queue -- playing, paused or buffering.
+    // Tidying a stale queue is worth doing; doing it under a listener is
+    // not, and driving away from home turns every LAN address unreachable
+    // at the moment they least want the queue touched. Dead entries then
+    // last until the queue is next restored, which is when this is useful
+    // anyway: reopening the app somewhere else.
+    if (_loaded) return 0;
+    // The track to keep is held by identity, not by index: removing an
+    // entry shifts the output's own index, and that index reaches us over a
+    // stream, so it is behind by the time the next removal is decided.
+    final playing = _currentIndex >= 0 && _currentIndex < _entries.length
+        ? _entries[_currentIndex]
+        : null;
     var dropped = 0;
     for (var i = _entries.length - 1; i >= 0; i--) {
-      if (i == _currentIndex || reachable(_entries[i])) continue;
+      if (identical(_entries[i], playing) || reachable(_entries[i])) continue;
       await removeQueueItemAt(i);
       dropped++;
     }
