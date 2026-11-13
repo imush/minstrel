@@ -249,9 +249,18 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
     final r = _resolve(items, start, await _output.sinks(), local: _output.isLocal);
     skipped = r.unplayable;
     needRelay = r.needRelay;
-    _pendingIndex = -1;
+    // Set before the queue goes out, so the state published with it already
+    // names the track we are about to start on. A queue that arrives with
+    // the previous index -- null on a fresh start -- leaves a car showing it
+    // parked on the first track, and a head unit that only re-reads its
+    // position when the queue changes never catches up, however correct the
+    // index we send afterwards.
+    _pendingIndex = r.entries.isEmpty ? -1 : r.index;
     _restoredFrom = null;
     _setEntries(r.entries);
+    // Queue and position belong together: published apart, the car shows the
+    // new queue against the old index.
+    _publish(_output.state, at: _pendingIndex);
     if (r.entries.isEmpty) {
       await _output.stop();
       return;
@@ -540,18 +549,23 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
     if (_output case final RendererOutput out) out.stepVolume(direction.index);
   }
 
-  void _publish(OutputState s) {
+  /// [at] publishes a queue position the output hasn't reached yet, for a
+  /// queue just replaced: until it loads, the output's own index still
+  /// counts tracks in the queue before it.
+  void _publish(OutputState s, {int? at}) {
     final out = _output;
     _keepAlive?.update(
       active: out is RendererOutput && s.error == null && s.index >= 0,
       playing: s.playing || s.buffering,
     );
-    final index = s.index >= 0 ? s.index : _pendingIndex;
+    final index = at ?? (s.index >= 0 ? s.index : _pendingIndex);
     final hasItem = index >= 0 && index < _entries.length;
     // Players learn a track's length only after it starts, and may report
     // zero until then (ExoPlayer at a gapless switch, renderers before the
     // next track's first poll): zero means not known yet.
-    final reported = s.index >= 0 && s.duration != null && s.duration! > Duration.zero ? s.duration : null;
+    final reported = at == null && s.index >= 0 && s.duration != null && s.duration! > Duration.zero
+        ? s.duration
+        : null;
     if (hasItem && mediaItem.value?.id != _entries[index].resource.uri.toString()) {
       mediaItem.add(_mediaItem(_entries[index], reported));
     } else if (hasItem && reported != null && mediaItem.value?.duration != reported) {
@@ -559,7 +573,7 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
     }
     // Only once it is really playing: a track skipped past is not one
     // anybody wants kept on the phone.
-    if (hasItem && (s.playing || s.buffering)) {
+    if (hasItem && at == null && (s.playing || s.buffering)) {
       final started = _entries[index];
       final id = started.resource.uri.toString();
       if (_noted != id) {
