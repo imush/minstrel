@@ -764,8 +764,36 @@ public class AudioService extends MediaBrowserServiceCompat {
      * Gets called from background thread.
      */
     synchronized void setQueue(List<MediaSessionCompat.QueueItem> queue) {
+        // Handing the session a queue it already has is not free: a head unit
+        // rebuilds its queue list and throws the driver's scroll position back
+        // to the top, and never scrolls to the playing track. Apps resend an
+        // unchanged queue for good reason -- this service is destroyed and
+        // recreated with an empty one -- so swallow the no-ops here rather
+        // than asking every caller to keep track.
+        if (sameQueue(AudioService.queue, queue)) {
+            AudioService.queue = queue;
+            return;
+        }
         AudioService.queue = queue;
         mediaSession.setQueue(queue);
+    }
+
+    private static boolean sameQueue(List<MediaSessionCompat.QueueItem> a, List<MediaSessionCompat.QueueItem> b) {
+        if (a == null || b == null) return false;
+        if (a.size() != b.size()) return false;
+        for (int i = 0; i < a.size(); i++) {
+            MediaSessionCompat.QueueItem x = a.get(i), y = b.get(i);
+            if (x.getQueueId() != y.getQueueId()) return false;
+            String xm = x.getDescription().getMediaId(), ym = y.getDescription().getMediaId();
+            if (xm == null ? ym != null : !xm.equals(ym)) return false;
+            CharSequence xt = x.getDescription().getTitle(), yt = y.getDescription().getTitle();
+            if (xt == null || yt == null) {
+                if (xt != yt) return false;
+            } else if (!xt.toString().equals(yt.toString())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     void playMediaItem(MediaDescriptionCompat description) {
