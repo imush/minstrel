@@ -152,10 +152,15 @@ class CarLibrary {
     final parts = _parts(id);
     switch (parts) {
       case ['t', final udn, final parent, final item]:
-        final tracks = await _audioChildren(udn, parent);
-        final start = tracks.indexWhere((t) => t.id == item);
-        if (tracks.isEmpty) return;
-        await player.playItems(tracks, start < 0 ? 0 : start);
+        final all = await _audioChildren(udn, parent);
+        if (all.isEmpty) return;
+        // From here to the end of the folder, not the folder positioned at
+        // this track. A driver has no room to pick a second thing, so the
+        // rest of the album should follow on its own; and what plays is then
+        // exactly what the queue shows.
+        final at = all.indexWhere((t) => t.id == item);
+        final tracks = at <= 0 ? all : all.sublist(at);
+        await player.playItems(tracks, 0);
         await _remember(udn, parent, tracks.first);
       case ['c', final udn, final container]:
         final tracks = await source.tracks(udn, container);

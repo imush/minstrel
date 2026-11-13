@@ -120,18 +120,29 @@ class _BrowsePageState extends State<BrowsePage> {
     return _objects.whereType<DidlItem>().where((i) => i.isAudio).toList();
   }
 
-  /// Opens a video on this device. Video doesn't join the queue: the queue
-  /// is an album to listen to, and a renderer or the car can't take video
-  /// anyway.
-  Future<void> _play(DidlItem? from) async {
+  /// This track and the ones after it in the listing.
+  Future<List<DidlItem>> _from(DidlItem item) async {
     final items = await _allItems();
+    final at = items.indexWhere((i) => i.id == item.id);
+    return at <= 0 ? items : items.sublist(at);
+  }
+
+  /// Replaces the queue with [items] and starts at the top of it.
+  ///
+  /// The queue is what it says it is: tapping one track queues that track,
+  /// not the album around it. Whoever wants the album has Play all above,
+  /// or Play from here beside the track.
+  Future<void> _start(List<DidlItem> items) async {
     if (items.isEmpty || !mounted) return;
-    final start = from == null ? 0 : items.indexWhere((i) => i.id == from.id);
-    if (!await playTracks(context, items, start < 0 ? 0 : start)) return;
+    if (!await playTracks(context, items, 0)) return;
     // Shown in the car's Recent tab.
     unawaited(AppServices.instance.car
         .remember(widget.server.udn, widget.containerId, widget.title, items.first.albumArt));
   }
+
+  Future<void> _playAll() async => _start(await _allItems());
+
+  Future<void> _playFromHere(DidlItem item) async => _start(await _from(item));
 
   @override
   Widget build(BuildContext context) {
@@ -166,7 +177,7 @@ class _BrowsePageState extends State<BrowsePage> {
             IconButton(
               tooltip: 'Play all',
               icon: const Icon(Icons.play_arrow),
-              onPressed: () => _play(null),
+              onPressed: _playAll,
             ),
             IconButton(
               tooltip: 'More',
@@ -246,11 +257,13 @@ class _BrowsePageState extends State<BrowsePage> {
                         // greyed because Minstrel plays music. Opening it
                         // is a job for a player built for video.
                         enabled: item.isAudio,
-                        onTap: () => _play(item),
+                        onTap: () => _start([item]),
                         onMore: () => showQueueActions(context,
                             title: item.title,
-                            playNowLabel: 'Play from here',
-                            playNow: () => _play(item),
+                            playNowLabel: 'Play',
+                            playNow: () => _start([item]),
+                            fromHere: item.isAudio ? () => _from(item) : null,
+                            playFromHere: item.isAudio ? () => _playFromHere(item) : null,
                             info: () => showTrackInfo(context, item),
                             tracks: () async => [item],
                             audio: item.isAudio),

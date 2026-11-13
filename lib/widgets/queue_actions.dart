@@ -9,8 +9,10 @@ import 'relay_prompt.dart';
 
 enum QueueAction {
   playNow,
+  playFromHere,
   playNext,
   addToQueue,
+  enqueueFromHere,
   download,
   downloadAndPin,
   unpin,
@@ -18,16 +20,24 @@ enum QueueAction {
   saveCopy,
 }
 
-/// Bottom sheet offering Play now / Play next / Add to queue for a track or
-/// a folder. [tracks] is called only after a choice, since collecting a
-/// folder's tracks can take several requests. With [info], a track's sheet
-/// also offers its details.
+/// Bottom sheet offering what can be done with a track or a folder.
+/// [tracks] is called only after a choice, since collecting a folder's
+/// tracks can take several requests. With [info], a track's sheet also
+/// offers its details.
+///
+/// [fromHere] marks this as one row of a listing rather than a whole
+/// folder: it yields this track and the ones after it, and the sheet gains
+/// the two "from here" rows. Both halves are offered because they answer
+/// different wishes — this one track, or the rest of the album from it —
+/// and guessing between them is what made tapping a track play the lot.
 Future<void> showQueueActions(
   BuildContext context, {
   required String title,
   required Future<List<DidlItem>> Function() tracks,
   String playNowLabel = 'Play now',
   Future<void> Function()? playNow,
+  Future<List<DidlItem>> Function()? fromHere,
+  Future<void> Function()? playFromHere,
   VoidCallback? info,
   bool? pinned,
   bool audio = true,
@@ -51,16 +61,31 @@ Future<void> showQueueActions(
             title: Text(playNowLabel),
             onTap: () => Navigator.pop(context, QueueAction.playNow),
           ),
-          ListTile(
-            leading: const Icon(Icons.playlist_play),
-            title: const Text('Play next'),
-            onTap: () => Navigator.pop(context, QueueAction.playNext),
-          ),
+          if (fromHere != null)
+            ListTile(
+              leading: const Icon(Icons.playlist_play),
+              title: const Text('Play from here'),
+              subtitle: const Text('Replaces the queue with this track onwards'),
+              onTap: () => Navigator.pop(context, QueueAction.playFromHere),
+            )
+          else
+            ListTile(
+              leading: const Icon(Icons.playlist_play),
+              title: const Text('Play next'),
+              onTap: () => Navigator.pop(context, QueueAction.playNext),
+            ),
           ListTile(
             leading: const Icon(Icons.playlist_add),
-            title: const Text('Add to queue'),
+            title: Text(fromHere == null ? 'Add to queue' : 'Enqueue'),
             onTap: () => Navigator.pop(context, QueueAction.addToQueue),
           ),
+          if (fromHere != null)
+            ListTile(
+              leading: const Icon(Icons.playlist_add_check),
+              title: const Text('Enqueue from here'),
+              subtitle: const Text('Appends this track and the ones after it'),
+              onTap: () => Navigator.pop(context, QueueAction.enqueueFromHere),
+            ),
           // Not music: there is nothing to keep for listening, so it is
           // fetched once and handed to the system's own save sheet.
           if (!audio) ...[
@@ -129,7 +154,8 @@ Future<void> showQueueActions(
     ),
   );
   if (action == null || !context.mounted) return;
-  await runQueueAction(context, action, tracks: tracks, playNow: playNow);
+  await runQueueAction(context, action,
+      tracks: tracks, playNow: playNow, fromHere: fromHere, playFromHere: playFromHere);
 }
 
 /// Deletes copies of [items] held on this phone, having asked first.
@@ -258,6 +284,8 @@ Future<void> runQueueAction(
   QueueAction action, {
   required Future<List<DidlItem>> Function() tracks,
   Future<void> Function()? playNow,
+  Future<List<DidlItem>> Function()? fromHere,
+  Future<void> Function()? playFromHere,
 }) async {
   final messenger = ScaffoldMessenger.of(context);
   final player = AppServices.instance.player;
@@ -266,7 +294,16 @@ Future<void> runQueueAction(
       await playNow();
       return;
     }
-    final items = await tracks();
+    if (action == QueueAction.playFromHere && playFromHere != null) {
+      await playFromHere();
+      return;
+    }
+    // The two "from here" rows differ from their neighbours only in what
+    // they work on, so they are answered with a wider list and then handled
+    // as the plain Play and Enqueue they are.
+    final selection =
+        action == QueueAction.playFromHere || action == QueueAction.enqueueFromHere;
+    final items = await (selection ? (fromHere ?? tracks) : tracks)();
     if (items.isEmpty) {
       messenger.showSnackBar(const SnackBar(content: Text('No tracks found')));
       return;
@@ -302,10 +339,17 @@ Future<void> runQueueAction(
       }
       return;
     }
-    var added = switch (action) {
+    final op = switch (action) {
+      QueueAction.playFromHere => QueueAction.playNow,
+      QueueAction.enqueueFromHere => QueueAction.addToQueue,
+      _ => action,
+    };
+    var added = switch (op) {
       QueueAction.playNow => await player.playItems(items, 0).then((_) => player.entries.length),
       QueueAction.playNext => await player.playNext(items),
       QueueAction.addToQueue => await player.addToQueue(items),
+      QueueAction.playFromHere ||
+      QueueAction.enqueueFromHere ||
       QueueAction.download ||
       QueueAction.downloadAndPin ||
       QueueAction.unpin ||
@@ -320,10 +364,12 @@ Future<void> runQueueAction(
     final pending = player.needRelay;
     if (pending.isNotEmpty && context.mounted && await offerRelay(context) == RelayOffer.allowed) {
       warnIfPlayerCannotReachUs(messenger);
-      added += switch (action) {
+      added += switch (op) {
         QueueAction.playNow => await player.playItems(items, 0).then((_) => player.entries.length - added),
         QueueAction.playNext => await player.playNext(pending),
         QueueAction.addToQueue => await player.addToQueue(pending),
+        QueueAction.playFromHere ||
+        QueueAction.enqueueFromHere ||
         QueueAction.download ||
         QueueAction.downloadAndPin ||
         QueueAction.unpin ||
@@ -336,10 +382,12 @@ Future<void> runQueueAction(
     final name = player.output.name;
     messenger.showSnackBar(SnackBar(
       content: Text([
-        switch (action) {
+        switch (op) {
           QueueAction.playNow => 'Playing $what',
           QueueAction.playNext => 'Playing $what next',
           QueueAction.addToQueue => 'Added $what to the queue',
+          QueueAction.playFromHere ||
+          QueueAction.enqueueFromHere ||
           QueueAction.download ||
           QueueAction.downloadAndPin ||
           QueueAction.unpin ||

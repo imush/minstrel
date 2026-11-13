@@ -183,12 +183,14 @@ class _AlbumTile extends StatelessWidget {
           for (final (index, (entry, item)) in album.tracks.indexed)
             ItemTile(
               item: item,
-              onTap: () => playTracks(context, album.items, index),
+              onTap: () => playTracks(context, [item], 0),
               onMore: () => showQueueActions(
                 context,
                 title: item.title,
-                playNowLabel: 'Play from here',
-                playNow: () => playTracks(context, album.items, index),
+                playNowLabel: 'Play',
+                playNow: () => playTracks(context, [item], 0),
+                fromHere: () async => album.items.sublist(index),
+                playFromHere: () => playTracks(context, album.items.sublist(index), 0),
                 info: () => showTrackInfo(context, item),
                 tracks: () async => [item],
                 pinned: entry.pinned,

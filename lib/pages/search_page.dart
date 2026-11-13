@@ -115,12 +115,15 @@ class _SearchPageState extends State<SearchPage> {
                           for (final (i, t) in r.tracks.indexed)
                             ItemTile(
                               item: t,
-                              // The results play as a list, from the one tapped.
-                              onTap: () => playTracks(context, r.tracks, i),
+                              // One result plays alone; the rest of the list
+                              // follows only if asked for from here.
+                              onTap: () => playTracks(context, [t], 0),
                               onMore: () => showQueueActions(context,
                                   title: t.title,
-                                  playNowLabel: 'Play from here',
-                                  playNow: () => playTracks(context, r.tracks, i),
+                                  playNowLabel: 'Play',
+                                  playNow: () => playTracks(context, [t], 0),
+                                  fromHere: () async => r.tracks.sublist(i),
+                                  playFromHere: () => playTracks(context, r.tracks.sublist(i), 0),
                                   info: () => showTrackInfo(context, t),
                                   tracks: () async => [t]),
                             ),

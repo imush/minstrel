@@ -124,14 +124,17 @@ void main() {
     expect(tracks.first.art, Uri.parse('http://192.168.1.9:9790/art/t1.jpg'));
   });
 
-  test('a track plays its album from that track, and is remembered', () async {
+  test('a track queues the album from that track onwards, and is remembered', () async {
     final album = (await car.children(
             (await car.children((await car.children((await car.children(CarLibrary.library)).single.id)).single.id))
                 .single
                 .id));
     await car.play(album[1].id);
-    expect(player.played, ['Allegro ma non troppo', 'Andante molto mosso', 'Allegro']);
-    expect(player.start, 1);
+    // The queue begins at the track pressed: a driver gets the rest of the
+    // album without picking anything else, and the queue shown is the queue
+    // that plays.
+    expect(player.played, ['Andante molto mosso', 'Allegro']);
+    expect(player.start, 0);
 
     expect(car.roots().map((n) => n.id), [CarLibrary.history, CarLibrary.library]);
     final recent = await car.children(CarLibrary.history);
