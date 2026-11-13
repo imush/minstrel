@@ -137,13 +137,13 @@ void main() {
     final trouble = (await car.children(album)).single;
     // Not an empty folder: an empty list reads as a folder with nothing in
     // it, which is what made this fail quietly in the first place.
-    expect(trouble.title, 'Can\'t reach MinimServer');
-    expect(trouble.subtitle, contains('try again'));
+    expect(trouble.title, 'Try again');
+    expect(trouble.subtitle, 'No connection — couldn\'t reach MinimServer');
     expect(trouble.browsable, isTrue);
     expect(trouble.playable, isFalse);
 
     // Pressing it while still out of signal says the same thing again.
-    expect((await car.children(trouble.id)).single.title, 'Can\'t reach MinimServer');
+    expect((await car.children(trouble.id)).single.title, 'Try again');
 
     // Back in signal, the same row brings up the folder it stood for.
     source.failWith = null;

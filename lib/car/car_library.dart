@@ -141,8 +141,12 @@ class CarLibrary {
     for (final s in source.servers) {
       if (s.udn == udn) name = s.name;
     }
-    return CarNode(_id(['r', id]), 'Can\'t reach ${name ?? 'the server'}',
-        subtitle: 'No connection — select to try again', browsable: true);
+    // The action goes on the title: it is the line a driver reads at a
+    // glance, and the one thing to do here is press it. Why it is there
+    // goes underneath, for whoever has a moment to look.
+    return CarNode(_id(['r', id]), 'Try again',
+        subtitle: 'No connection — couldn\'t reach ${name ?? 'the server'}',
+        browsable: true);
   }
 
   /// Artists, albums and tracks matching [query], from every server that
