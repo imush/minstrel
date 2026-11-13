@@ -224,6 +224,33 @@ class _BrowsePageState extends State<BrowsePage> {
                   }
                   final i = showHeader ? rawIndex - 1 : rawIndex;
                   if (i >= shown.length) {
+                    // A page that failed part of the way down a long list.
+                    // The spinner would otherwise turn for ever over a list
+                    // that has quietly stopped growing, which is what patchy
+                    // coverage looks like from here.
+                    if (_error != null) {
+                      return Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(children: [
+                          Text(
+                            isConnectionError(_error!)
+                                ? 'Couldn\'t load the rest of this list.\n'
+                                    'The connection timed out.'
+                                : 'Couldn\'t load the rest of this list.\n$_error',
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 16),
+                          FilledButton.tonalIcon(
+                            onPressed: () {
+                              setState(() => _error = null);
+                              _loadMore();
+                            },
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Try again'),
+                          ),
+                        ]),
+                      );
+                    }
                     return const Padding(
                       padding: EdgeInsets.all(24),
                       child: Center(child: CircularProgressIndicator()),
@@ -496,7 +523,12 @@ class _ErrorView extends StatelessWidget {
   /// more use than the SOAP error that results from it.
   String get _message {
     final status = homeId == null ? null : AppServices.instance.homes.proxy.status(homeId!);
-    if (status == null || status.state == HomeState.connected) return 'The server didn\'t respond.\n$error';
+    if (status == null || status.state == HomeState.connected) {
+      // Away from home this is usually the cellular link, not the server.
+      return isConnectionError(error)
+          ? 'Couldn\'t reach the server.\nThe connection timed out.'
+          : 'The server didn\'t respond.\n$error';
+    }
     return [status.problem?.message ?? LaunchpadProblem.unreachable.message, ...status.tried].join('\n');
   }
 

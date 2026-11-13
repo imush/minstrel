@@ -94,7 +94,12 @@ class _SearchPageState extends State<SearchPage> {
         ),
       ),
       body: _error != null
-          ? _Message('The search failed.\n$_error')
+          ? _Message(
+              isConnectionError(_error!)
+                  ? 'Couldn\'t reach ${widget.server.name}.\nThe connection timed out.'
+                  : 'The search failed.\n$_error',
+              onRetry: () => _search(_query),
+            )
           : _query.isEmpty
               ? const _Message('Search for an artist, composer, album or track.\n'
                   'Several words narrow it down: "haydn symphony 94".')
@@ -161,14 +166,28 @@ class _Header extends StatelessWidget {
 
 class _Message extends StatelessWidget {
   final String text;
+  final VoidCallback? onRetry;
 
-  const _Message(this.text);
+  const _Message(this.text, {this.onRetry});
 
   @override
   Widget build(BuildContext context) => Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
-          child: Text(text, textAlign: TextAlign.center),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(text, textAlign: TextAlign.center),
+              if (onRetry != null) ...[
+                const SizedBox(height: 16),
+                FilledButton.tonalIcon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Try again'),
+                ),
+              ],
+            ],
+          ),
         ),
       );
 }

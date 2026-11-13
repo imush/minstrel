@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:minstrel/car/car_library.dart';
@@ -33,8 +34,12 @@ class FakeSource implements CarSource {
   @override
   List<({String udn, String name, String? via})> get servers => list;
 
+  /// Set to make every browse fail, as patchy coverage does.
+  Object? failWith;
+
   @override
   Future<BrowseResult> browse(String udn, String objectId, {int start = 0, int count = 200}) async {
+    if (failWith != null) throw failWith!;
     final all = tree[objectId] ?? const [];
     final page = all.skip(start).take(count).toList();
     return BrowseResult(page, all.length, 1);
@@ -122,6 +127,29 @@ void main() {
         reason: 'video left out');
     expect(tracks.every((n) => n.playable && !n.browsable), isTrue);
     expect(tracks.first.art, Uri.parse('http://192.168.1.9:9790/art/t1.jpg'));
+  });
+
+  test('a folder that will not load says so, and the row reloads it', () async {
+    final server = (await car.children(CarLibrary.library)).single.id;
+    final folder = (await car.children(server)).single.id;
+    final album = (await car.children(folder)).single.id;
+    source.failWith = const SocketException('Connection timed out');
+    final trouble = (await car.children(album)).single;
+    // Not an empty folder: an empty list reads as a folder with nothing in
+    // it, which is what made this fail quietly in the first place.
+    expect(trouble.title, 'Can\'t reach MinimServer');
+    expect(trouble.subtitle, contains('try again'));
+    expect(trouble.browsable, isTrue);
+    expect(trouble.playable, isFalse);
+
+    // Pressing it while still out of signal says the same thing again.
+    expect((await car.children(trouble.id)).single.title, 'Can\'t reach MinimServer');
+
+    // Back in signal, the same row brings up the folder it stood for.
+    source.failWith = null;
+    final back = await car.children(trouble.id);
+    expect(back.map((n) => n.title),
+        ['Allegro ma non troppo', 'Andante molto mosso', 'Allegro']);
   });
 
   test('a track queues the album from that track onwards, and is remembered', () async {

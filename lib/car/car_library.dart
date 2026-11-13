@@ -59,6 +59,7 @@ abstract class CarHistoryStore {
 /// c|<udn>|<container id>    a server folder (0 is a server's top)
 /// t|<udn>|<parent>|<item>   a track; playing it plays its folder from it
 /// a|<udn>|<object id>       a search result: an album plays whole
+/// r|<node id>               a node that wouldn't load: opens it again
 /// ```
 class CarLibrary {
   /// The top level, which holds the tabs.
@@ -110,18 +111,38 @@ class CarLibrary {
       ];
     }
     final parts = _parts(id);
+    // Pressed after it failed: ask for the node it stands for, afresh.
+    if (parts case ['r', final target]) return children(target, page: page, pageSize: pageSize);
     if (parts.length != 3 || parts[0] != 'c') return const [];
     final udn = parts[1], containerId = parts[2];
     final start = page != null && pageSize != null ? page * pageSize : 0;
     final count = pageSize ?? maxItems;
     if (start >= maxItems) return const [];
     final objects = <DidlObject>[];
-    while (objects.length < count) {
-      final r = await source.browse(udn, containerId, start: start + objects.length, count: count - objects.length);
-      objects.addAll(r.objects);
-      if (r.objects.isEmpty || (r.totalMatches > 0 && start + objects.length >= r.totalMatches)) break;
+    try {
+      while (objects.length < count) {
+        final r = await source.browse(udn, containerId, start: start + objects.length, count: count - objects.length);
+        objects.addAll(r.objects);
+        if (r.objects.isEmpty || (r.totalMatches > 0 && start + objects.length >= r.totalMatches)) break;
+      }
+    } on Object {
+      // Patchy coverage is the ordinary case at the wheel, and the queries
+      // behind these menus time out quietly. An empty list is read as a
+      // folder with nothing in it, so say what happened and give the driver
+      // one thing to press.
+      return [_trouble(id, udn)];
     }
     return [for (final o in objects) ?_node(udn, containerId, o)];
+  }
+
+  /// A folder that wouldn't load, as a row that asks for it again.
+  CarNode _trouble(String id, String udn) {
+    String? name;
+    for (final s in source.servers) {
+      if (s.udn == udn) name = s.name;
+    }
+    return CarNode(_id(['r', id]), 'Can\'t reach ${name ?? 'the server'}',
+        subtitle: 'No connection — select to try again', browsable: true);
   }
 
   /// Artists, albums and tracks matching [query], from every server that
