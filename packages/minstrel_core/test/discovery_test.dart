@@ -90,11 +90,12 @@ void main() {
           reason: 'the one that answered is still usable');
     });
 
-    test('an error is one line, short enough to show', () async {
+    test('an error is one line, and keeps the address and port at its end', () async {
       final problems = await registry.setHomeServers(
           'abc', 'Home', [Uri.parse('http://127.0.0.1:1/h/abc/u/s/device.xml')]);
       expect(problems.single.error, isNot(contains('\n')));
-      expect(problems.single.error.length, lessThanOrEqualTo(120));
+      expect(problems.single.error, contains('127.0.0.1'));
+      expect(problems.single.error.length, lessThanOrEqualTo(400));
     });
   });
 }

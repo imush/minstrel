@@ -65,6 +65,9 @@ class Homes extends ChangeNotifier {
 
   Future<void> refresh(Home home) async {
     try {
+      // The servers are fetched through the proxy, which iOS may have shut
+      // while the app was away.
+      await proxy.revive();
       final info = await proxy.info(home.id);
       if (info.canInvite) {
         _canInvite.add(home.id);
@@ -86,8 +89,20 @@ class Homes extends ChangeNotifier {
         updated = updated.copyWith(name: info.name);
       }
       if (!identical(updated, home)) await _replace(updated);
-      final problems = await _registry.setHomeServers(
+      var problems = await _registry.setHomeServers(
           home.id, updated.name, [for (final s in info.servers) s.description]);
+      // Refused on loopback means the proxy itself isn't taking connections.
+      // Seen on iPadOS 27; noted for the diagnostics page, then the proxy is
+      // opened again and asked once more, with descriptions naming its port
+      // as it now is.
+      if (problems.any((p) => p.location.host == '127.0.0.1' && p.error.contains('refused'))) {
+        proxy.note('refused on loopback; probe says ${await proxy.probe() ?? 'it answers'}');
+        await proxy.revive();
+        final again = await proxy.info(home.id);
+        problems = await _registry.setHomeServers(
+            home.id, updated.name, [for (final s in again.servers) s.description]);
+        proxy.note(problems.isEmpty ? 'second try worked' : 'second try: ${problems.first.error}');
+      }
       _trouble[home.id] = [
         if (problems.isNotEmpty)
           problems.length == info.servers.length

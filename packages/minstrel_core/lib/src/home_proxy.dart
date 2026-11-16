@@ -126,13 +126,61 @@ class HomeProxy {
   Future<void> start({int port = preferredPort}) async {
     try {
       _server = await HttpServer.bind(InternetAddress.loopbackIPv4, port);
-    } on SocketException {
+    } on SocketException catch (e) {
+      note('port $port taken (${e.osError?.message ?? e.message}), using another');
       _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     }
+    note('listening on ${_server!.address.address}:${_server!.port}');
     _server!
       ..autoCompress = false
       ..idleTimeout = const Duration(seconds: 30)
-      ..listen(_handle);
+      ..listen(_handle,
+          onError: (Object e) => note('listener error: $e'),
+          onDone: () => note('listener closed'));
+  }
+
+  /// What happened to the loopback listener, newest last, for the
+  /// diagnostics page.
+  final log = <String>[];
+
+  /// Adds a line to [log].
+  void note(String line) {
+    final t = DateTime.now().toIso8601String().substring(11, 19);
+    log.add('$t $line');
+    if (log.length > 40) log.removeRange(0, log.length - 40);
+  }
+
+  /// Connects to the loopback listener and asks it for nothing in
+  /// particular: null when it answers, otherwise what went wrong.
+  Future<String?> probe() async {
+    final server = _server;
+    if (server == null) return 'not started';
+    try {
+      final probe = await Socket.connect(InternetAddress.loopbackIPv4, server.port,
+          timeout: const Duration(seconds: 1));
+      probe.destroy();
+      return null;
+    } on Object catch (e) {
+      return e is SocketException ? '${e.osError?.message ?? e.message} (errno ${e.osError?.errorCode})' : '$e';
+    }
+  }
+
+  /// Listens again if the server stopped answering. iOS may take back the
+  /// listening sockets of a suspended app without telling it, and on an
+  /// iPadOS 27 device every home server showed "Connection refused" at
+  /// 127.0.0.1 although the home itself answered (cause not yet known).
+  /// Call before anything fetches through the proxy.
+  Future<void> revive() async {
+    final server = _server;
+    if (server == null) return;
+    final port = server.port;
+    final why = await probe();
+    if (why == null) return;
+    // Not answering: listen again.
+    note('not answering on $port: $why; listening again');
+    await server.close(force: true);
+    // The same port when it's free, so URLs handed out before still work.
+    await start(port: port);
   }
 
   _Relay? _relay;

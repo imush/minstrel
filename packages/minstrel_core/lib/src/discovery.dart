@@ -122,6 +122,12 @@ class DeviceRegistry {
     _remembered.addAll(locations);
   }
 
+  /// What discovery's sockets and searches did, for the diagnostics page.
+  List<String> get ssdpLog => List.unmodifiable(_ssdp.log);
+
+  /// Replies and announcements heard, by sender address.
+  Map<String, int> get ssdpHeard => Map.unmodifiable(_ssdp.heard);
+
   MediaServer? server(String udn) => _servers[udn] ?? _remote[udn];
 
   /// Replaces the servers of home [homeId] with those at [descriptions].
@@ -157,10 +163,11 @@ class DeviceRegistry {
   }
 
   /// One readable line from an exception, since these end up on screen.
+  /// Whole: the end of a socket error is where the address and port are.
   static String _why(Object e) {
     var text = e.toString().split('\n').first.trim();
     if (text.startsWith('Exception: ')) text = text.substring(11);
-    return text.length > 120 ? '${text.substring(0, 117)}...' : text;
+    return text.length > 400 ? '${text.substring(0, 397)}...' : text;
   }
 
   /// The servers reached through home [homeId], including any hidden by
@@ -204,6 +211,17 @@ class DeviceRegistry {
     } finally {
       _checking = false;
     }
+  }
+
+  /// Opens the SSDP sockets afresh and searches. iOS takes back a suspended
+  /// app's sockets without closing them: searches then go nowhere and no
+  /// reply arrives, while the addresses haven't changed, so [search] sees
+  /// no reason to reopen them. Only servers that keep announcing themselves
+  /// were still found that way. Call on coming back to the foreground.
+  Future<void> reopen() async {
+    await _ssdp.stop();
+    await _ssdp.start();
+    await refresh();
   }
 
   /// Drops every device found on the LAN; those added by URL stay.

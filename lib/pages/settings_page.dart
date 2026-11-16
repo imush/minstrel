@@ -5,6 +5,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../app_services.dart';
 import '../cache/cache_store.dart';
 import '../cache/device_storage.dart';
+import 'diagnostics_page.dart';
 import 'offline_page.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -103,6 +104,13 @@ class _SettingsPageState extends State<SettingsPage> {
           const Divider(),
           const _OfflineCache(),
           const Divider(),
+          ListTile(
+            leading: const Icon(Icons.network_check),
+            title: const Text('Network diagnostics'),
+            subtitle: const Text('A report to send when servers or a home don\'t show up'),
+            onTap: () => Navigator.push(
+                context, MaterialPageRoute<void>(builder: (_) => const DiagnosticsPage())),
+          ),
           const AppVersion(),
         ],
       ),

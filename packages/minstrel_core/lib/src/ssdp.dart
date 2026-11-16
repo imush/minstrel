@@ -79,22 +79,41 @@ class SsdpClient {
   /// is told apart after the search.
   bool _refused = false;
 
+  /// What happened to the sockets and searches, newest last, for the
+  /// diagnostics page: discovery fails silently by design, so without this
+  /// a device that finds nothing can't say why.
+  final log = <String>[];
+  static const _logMost = 80;
+
+  /// Replies and announcements heard, by sender address.
+  final heard = <String, int>{};
+  bool _searchWorked = false;
+
+  void _note(String line) {
+    final t = DateTime.now().toIso8601String().substring(11, 19);
+    log.add('$t $line');
+    if (log.length > _logMost) log.removeRange(0, log.length - _logMost);
+  }
+
   /// Opens one socket per IPv4 interface so that searches go out on every
   /// network (Wi-Fi and Ethernet on a desktop, for example), and joins the
   /// multicast group to hear NOTIFY announcements.
   Future<void> start() async {
     final interfaces = await _interfaces();
     _bound = _addressesOf(interfaces);
+    _note('start: interfaces ${_addressesOf(interfaces).join(', ')}');
     for (final iface in interfaces) {
       for (final addr in iface.addresses) {
         try {
           final s = await RawDatagramSocket.bind(addr, 0);
           s.multicastHops = 4;
-          _setMulticastInterface(s, addr);
+          final how = _setMulticastInterface(s, addr);
           s.listen((event) => _onEvent(s, event), onError: _onSocketError);
           _sockets.add(s);
-        } on SocketException {
+          _note('bound ${addr.address}:${s.port}${how == null ? '' : ' (multicast interface: $how)'}');
+        } on SocketException catch (e) {
           // Interface went away or doesn't allow binding; skip it.
+          _note('bind ${addr.address} failed: ${_short(e)}');
         }
       }
     }
@@ -104,15 +123,18 @@ class SsdpClient {
       for (final iface in interfaces) {
         try {
           l.joinMulticast(_group, iface);
-        } on Object {
+          _note('listening on 1900, joined on ${iface.name}');
+        } on Object catch (e) {
           // Already joined through another address, or not permitted.
+          _note('join on ${iface.name} failed: ${_short(e)}');
         }
       }
       l.listen((event) => _onEvent(l, event), onError: _onSocketError);
       _listener = l;
-    } on Object {
+    } on Object catch (e) {
       // Port 1900 may be taken or multicast receive not permitted (iOS
       // without the multicast entitlement). Searching still works.
+      _note('listen on 1900 failed: ${_short(e)}');
     }
   }
 
@@ -131,6 +153,8 @@ class SsdpClient {
       await start();
     }
     _refused = false;
+    var sent = 0, failed = 0;
+    if (_sockets.isEmpty) _note('search: no socket to send from');
     for (var round = 0; round < 2; round++) {
       for (final s in _sockets) {
         for (final st in searchTargets) {
@@ -141,15 +165,28 @@ class SsdpClient {
               'ST: $st\r\n'
               'USER-AGENT: minstrel/0.1 UPnP/1.1\r\n\r\n';
           try {
-            s.send(utf8.encode(msg), _group, _port);
+            if (s.send(utf8.encode(msg), _group, _port) > 0) {
+              sent++;
+            } else {
+              failed++;
+              if (round == 0) _note('send from ${s.address.address} wrote nothing');
+            }
           } on SocketException catch (e) {
             // Refused, or the network changed under us; the next search
             // reopens the sockets.
+            failed++;
+            if (round == 0) _note('send from ${s.address.address} failed: ${_short(e)}');
             _onSocketError(e);
           }
         }
       }
       await Future<void>.delayed(const Duration(milliseconds: 300));
+    }
+    // Every failed search, but a working one only once: the background
+    // search would otherwise push everything else out of the log.
+    if (failed > 0 || sent == 0 || !_searchWorked) {
+      _note('search: sent $sent, failed $failed${_refused ? ' (refused)' : ''}');
+      _searchWorked = failed == 0 && sent > 0;
     }
     if (!_refused) {
       localNetworkDenied = multicastBlocked = false;
@@ -210,20 +247,28 @@ class SsdpClient {
   static bool _sameAddresses(Set<String> a, Set<String> b) => a.length == b.length && a.containsAll(b);
 
   /// Sets IP_MULTICAST_IF so the search leaves through this interface; the
-  /// OS otherwise picks one route for the whole multicast group.
-  static void _setMulticastInterface(RawDatagramSocket s, InternetAddress addr) {
+  /// OS otherwise picks one route for the whole multicast group. Returns
+  /// why it couldn't, or null.
+  static String? _setMulticastInterface(RawDatagramSocket s, InternetAddress addr) {
     final option = Platform.isLinux || Platform.isAndroid ? 32 : 9;
     try {
       s.setRawOption(RawSocketOption(
           RawSocketOption.levelIPv4, option, Uint8List.fromList(addr.rawAddress)));
-    } on Object {
+      return null;
+    } on Object catch (e) {
       // Unsupported here; binding to the address usually suffices.
+      return _short(e);
     }
   }
+
+  static String _short(Object e) => e is SocketException
+      ? '${e.osError?.message ?? e.message} (errno ${e.osError?.errorCode})'
+      : e.toString().split('\n').first;
 
   /// Send failures may also arrive asynchronously on the socket stream. On
   /// macOS and iOS, EHOSTUNREACH means the OS refused: see [search].
   void _onSocketError(Object error) {
+    _note('socket error: ${_short(error)}');
     if (_isRefusal(error)) _refused = true;
   }
 
@@ -233,6 +278,11 @@ class SsdpClient {
     while ((d = s.receive()) != null) {
       final msg = SsdpMessage.parse(d!.data, d.address);
       if (msg != null) {
+        final from = d.address.address;
+        if (!heard.containsKey(from)) {
+          _note('first ${msg.headers.containsKey('nt') ? 'announcement' : 'reply'} from $from (${msg.target})');
+        }
+        heard[from] = (heard[from] ?? 0) + 1;
         localNetworkDenied = multicastBlocked = false;
         _controller.add(msg);
       }

@@ -100,14 +100,16 @@ class AppServices {
     player.relay = instance.relay;
     if (Platform.isIOS) unawaited(CarPlayBridge(car).start());
     // Coming back to the app may mean a new network: home Wi-Fi, cellular.
-    AppLifecycleListener(onResume: () {
-      unawaited(instance.registry.refresh());
+    AppLifecycleListener(onResume: () async {
+      // iOS may have taken back the sockets while the app was suspended.
+      unawaited(Platform.isIOS ? instance.registry.reopen() : instance.registry.refresh());
       // The network may have changed meanwhile: on arriving home, use the
       // home address rather than going out and back in.
       instance.homes.proxy.recheck();
       // Permission to relay belongs to one network; coming back may be on
       // another.
       unawaited(instance.relay.recheck());
+      await instance.homes.proxy.revive();
       unawaited(instance.homes.refreshAll());
     });
     await instance._startCache();
