@@ -45,7 +45,13 @@ Future<void> showQueueActions(
   final action = await showModalBottomSheet<QueueAction>(
     context: context,
     showDragHandle: true,
+    // Without these the sheet stops at 9/16 of the screen, and a long menu
+    // is cut off at the bottom, SafeArea's padding first: the last row
+    // landed in Android's gesture strip.
+    isScrollControlled: true,
+    useSafeArea: true,
     builder: (context) => SafeArea(
+      child: SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -56,6 +62,9 @@ Future<void> showQueueActions(
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.titleMedium),
           ),
+          // Minstrel plays music only: a film or a picture is offered to save
+          // or look up, not to queue (video playback was taken out in 8010f8e).
+          if (audio) ...[
           ListTile(
             leading: const Icon(Icons.play_arrow),
             title: Text(playNowLabel),
@@ -86,10 +95,10 @@ Future<void> showQueueActions(
               subtitle: const Text('Appends this track and the ones after it'),
               onTap: () => Navigator.pop(context, QueueAction.enqueueFromHere),
             ),
+          ],
           // Not music: there is nothing to keep for listening, so it is
           // fetched once and handed to the system's own save sheet.
           if (!audio) ...[
-            const Divider(height: 1),
             ListTile(
               leading: const Icon(Icons.save_alt),
               title: const Text('Save a copy…'),
@@ -150,6 +159,7 @@ Future<void> showQueueActions(
               },
             ),
         ],
+      ),
       ),
     ),
   );

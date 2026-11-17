@@ -12,6 +12,10 @@ Future<void> showOutputPicker(BuildContext context) async {
   await showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
+    // Room for many players, scrolling past the screen's height, with the
+    // last above Android's gesture strip.
+    isScrollControlled: true,
+    useSafeArea: true,
     builder: (context) => StreamBuilder<void>(
       stream: app.registry.changes,
       builder: (context, _) {
@@ -42,6 +46,7 @@ Future<void> showOutputPicker(BuildContext context) async {
           for (final r in app.registry.renderers) (r.udn, r.name, Icons.speaker, noteFor(r)),
         ];
         return SafeArea(
+          child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -62,6 +67,7 @@ Future<void> showOutputPicker(BuildContext context) async {
                   },
                 ),
             ],
+          ),
           ),
         );
       },
