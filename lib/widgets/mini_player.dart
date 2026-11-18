@@ -28,10 +28,10 @@ class MiniPlayer extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  StreamBuilder<PlaybackState>(
-                    stream: player.playbackState,
+                  StreamBuilder<Duration>(
+                    stream: player.positions,
                     builder: (context, s) {
-                      final pos = s.data?.updatePosition ?? Duration.zero;
+                      final pos = s.data ?? Duration.zero;
                       final dur = item.duration;
                       final v = dur == null || dur.inMilliseconds == 0
                           ? 0.0

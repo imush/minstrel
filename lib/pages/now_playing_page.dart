@@ -128,10 +128,10 @@ class _ProgressState extends State<_Progress> {
   @override
   Widget build(BuildContext context) {
     final player = AppServices.instance.player;
-    return StreamBuilder<PlaybackState>(
-      stream: player.playbackState,
+    return StreamBuilder<Duration>(
+      stream: player.positions,
       builder: (context, snap) {
-        final pos = snap.data?.updatePosition ?? Duration.zero;
+        final pos = snap.data ?? Duration.zero;
         final dur = widget.duration ?? Duration.zero;
         final max = dur.inMilliseconds.toDouble();
         final value = _dragging ?? pos.inMilliseconds.toDouble().clamp(0.0, max);

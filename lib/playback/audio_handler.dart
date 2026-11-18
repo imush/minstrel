@@ -586,7 +586,9 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
       _savedIndex = index;
       _saveSoon();
     }
-    playbackState.add(PlaybackState(
+    final position = s.index >= 0 ? s.position : _pendingPosition;
+    if (positions.valueOrNull != position) positions.add(position);
+    final next = PlaybackState(
       controls: [
         MediaControl.skipToPrevious,
         s.playing ? MediaControl.pause : MediaControl.play,
@@ -612,8 +614,20 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
       updatePosition: s.index >= 0 ? s.position : _pendingPosition,
       queueIndex: hasItem ? index : null,
       errorMessage: s.error,
-    ));
+    );
+    // The player reports its position several times a second. The session
+    // needs none of that: it carries the position forward by itself from
+    // the last state while playing. And a head unit redraws its queue on
+    // every state it is sent, throwing the driver's scroll back each time,
+    // several times a second, so the queue could not be scrolled at all.
+    final sent = playbackState.valueOrNull;
+    if (sent == null || !onlyTimePassed(sent, next)) playbackState.add(next);
   }
+
+  /// Where playback is, as often as the output reports it: for this app's
+  /// own progress bars, since [playbackState] goes out only when something
+  /// other than time passing has changed.
+  final positions = BehaviorSubject<Duration>.seeded(Duration.zero);
 
   static Duration? _known(Duration? d) => d != null && d > Duration.zero ? d : null;
 
@@ -692,4 +706,23 @@ class _Resolved {
   final List<DidlItem> needRelay;
 
   const _Resolved(this.entries, this.index, this.unplayable, this.needRelay);
+}
+
+/// Whether [next] says nothing [sent] didn't: the same track, state and
+/// controls, and a position where [sent]'s would have carried on to, within
+/// a second, which is how far a seek has to move to count.
+@visibleForTesting
+bool onlyTimePassed(PlaybackState sent, PlaybackState next) {
+  if (sent.playing != next.playing ||
+      sent.processingState != next.processingState ||
+      sent.queueIndex != next.queueIndex ||
+      sent.errorMessage != next.errorMessage ||
+      sent.speed != next.speed ||
+      !listEquals(sent.controls, next.controls) ||
+      !setEquals(sent.systemActions, next.systemActions)) {
+    return false;
+  }
+  final expected =
+      sent.playing ? sent.updatePosition + next.updateTime.difference(sent.updateTime) * sent.speed : sent.updatePosition;
+  return (next.updatePosition - expected).abs() < const Duration(seconds: 1);
 }
