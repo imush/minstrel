@@ -5,6 +5,7 @@ import '../app_services.dart';
 import '../cache/cache_store.dart';
 import '../download/save_copy.dart';
 import '../pages/settings_page.dart' show formatBytes;
+import 'menu_sheet.dart';
 import 'relay_prompt.dart';
 
 enum QueueAction {
@@ -42,17 +43,9 @@ Future<void> showQueueActions(
   bool? pinned,
   bool audio = true,
 }) async {
-  final action = await showModalBottomSheet<QueueAction>(
-    context: context,
-    showDragHandle: true,
-    // Without these the sheet stops at 9/16 of the screen, and a long menu
-    // is cut off at the bottom, SafeArea's padding first: the last row
-    // landed in Android's gesture strip.
-    isScrollControlled: true,
-    useSafeArea: true,
-    builder: (context) => SafeArea(
-      child: SingleChildScrollView(
-      child: Column(
+  final action = await showMenuSheet<QueueAction>(
+    context,
+    builder: (context) => Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Padding(
@@ -160,8 +153,6 @@ Future<void> showQueueActions(
             ),
         ],
       ),
-      ),
-    ),
   );
   if (action == null || !context.mounted) return;
   await runQueueAction(context, action,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:minstrel_core/minstrel_core.dart';
 
 import '../app_services.dart';
+import 'menu_sheet.dart';
 
 /// Bottom sheet for choosing where audio plays. Switching carries the queue
 /// and position over to the new output.
@@ -9,13 +10,8 @@ Future<void> showOutputPicker(BuildContext context) async {
   final app = AppServices.instance;
   await app.registry.refresh();
   if (!context.mounted) return;
-  await showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    // Room for many players, scrolling past the screen's height, with the
-    // last above Android's gesture strip.
-    isScrollControlled: true,
-    useSafeArea: true,
+  await showMenuSheet<void>(
+    context,
     builder: (context) => StreamBuilder<void>(
       stream: app.registry.changes,
       builder: (context, _) {
@@ -45,9 +41,7 @@ Future<void> showOutputPicker(BuildContext context) async {
           ('local', 'This device', Icons.smartphone, null),
           for (final r in app.registry.renderers) (r.udn, r.name, Icons.speaker, noteFor(r)),
         ];
-        return SafeArea(
-          child: SingleChildScrollView(
-          child: Column(
+        return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const Padding(
@@ -67,9 +61,7 @@ Future<void> showOutputPicker(BuildContext context) async {
                   },
                 ),
             ],
-          ),
-          ),
-        );
+          );
       },
     ),
   );
