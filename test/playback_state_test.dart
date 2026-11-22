@@ -10,6 +10,7 @@ void main() {
     DateTime? at,
     int? index = 6,
     AudioProcessingState processing = AudioProcessingState.ready,
+    double speed = 1.0,
   }) =>
       PlaybackState(
         controls: [MediaControl.skipToPrevious, playing ? MediaControl.pause : MediaControl.play, MediaControl.skipToNext],
@@ -18,6 +19,7 @@ void main() {
         updatePosition: position,
         updateTime: at ?? t0,
         queueIndex: index,
+        speed: speed,
       );
 
   group('a head unit is not sent', () {
@@ -40,6 +42,26 @@ void main() {
     test('the same state again while paused', () {
       final sent = state(playing: false);
       expect(onlyTimePassed(sent, state(playing: false, at: t0.add(const Duration(seconds: 5)))), isTrue);
+    });
+  });
+
+  group('while a track loads', () {
+    // Reported at speed 0, so the car's clock stands still rather than
+    // counting through the silence.
+    final loading = state(processing: AudioProcessingState.buffering, position: Duration.zero, speed: 0);
+
+    test('a wait with the position where it was is not sent again', () {
+      final later = state(
+          processing: AudioProcessingState.buffering,
+          position: Duration.zero,
+          speed: 0,
+          at: t0.add(const Duration(seconds: 20)));
+      expect(onlyTimePassed(loading, later), isTrue);
+    });
+
+    test('the track starting is sent', () {
+      final started = state(position: Duration.zero, at: t0.add(const Duration(seconds: 20)));
+      expect(onlyTimePassed(loading, started), isFalse);
     });
   });
 

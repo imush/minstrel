@@ -611,7 +611,12 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
                       ? AudioProcessingState.ready
                       : AudioProcessingState.idle,
       playing: s.playing,
-      updatePosition: s.index >= 0 ? s.position : _pendingPosition,
+      // Still while a track loads: the session moves the position on by
+      // this speed between states, and none come while the player waits
+      // for data, so a car counted on through the silence of a track that
+      // was slow to arrive over a weak mobile connection.
+      speed: s.buffering ? 0.0 : 1.0,
+      updatePosition: position,
       queueIndex: hasItem ? index : null,
       errorMessage: s.error,
     );
