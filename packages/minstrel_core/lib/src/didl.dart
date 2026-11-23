@@ -258,6 +258,13 @@ class DidlItem extends DidlObject {
 
   bool get isAudio => upnpClass.startsWith('object.item.audioItem');
 
+  /// The other formats the server offers this item in, besides [played]:
+  /// a transcoded MP3, say, or, with MinimStreamer told to offer it
+  /// (`flac:wav24/-`), the original file behind an upsampled stream.
+  /// Which one is the original only the server knows; it doesn't say.
+  List<String> otherFormats(DidlResource? played) =>
+      ({for (final r in resources) r.formatLabel}..remove(played?.formatLabel)).toList();
+
   bool get isVideo => upnpClass.startsWith('object.item.videoItem');
 
   /// Whether Minstrel can play it at all. Separate from [isAudio], which

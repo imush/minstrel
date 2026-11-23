@@ -54,5 +54,9 @@ void main() {
       'Also as': 'MP3 320k',
       'Album artist': 'Cherkassky',
     });
+    // The other format sits just under Format: behind an upsampled stream
+    // it's the original file, and people look for it there.
+    final labels = trackInfoRows(item).map((r) => r.$1).toList();
+    expect(labels.indexOf('Also as'), labels.indexOf('Format') + 1);
   });
 }

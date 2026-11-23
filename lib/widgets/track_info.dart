@@ -46,6 +46,9 @@ List<(String, String)> trackInfoRows(DidlItem item, {DidlResource? resource}) {
     if (item.duration != null) ('Duration', formatDuration(item.duration)),
     if (res != null) ...[
       ('Format', res.formatLabel),
+      // Up here, not at the end: with MinimStreamer upsampling, this is
+      // where the original file shows, and people look for it by Format.
+      if (item.otherFormats(res) case final other when other.isNotEmpty) ('Also as', other.join(', ')),
       if (res.mimeType != null) ('Type', res.mimeType!),
       if (res.sampleFrequency != null) ('Sample rate', '${res.sampleFrequency} Hz'),
       if (res.bitsPerSample != null) ('Bit depth', '${res.bitsPerSample} bit'),
@@ -54,15 +57,8 @@ List<(String, String)> trackInfoRows(DidlItem item, {DidlResource? resource}) {
       if (res.size != null) ('Size', _size(res.size!)),
       ('URL', res.uri.toString()),
     ],
-    if (_otherFormats(item, res) case final other?) ('Also as', other),
     for (final t in item.otherTags) (_tagLabel(t), t.value),
   ];
-}
-
-/// Formats the server also offers the track in, such as a transcoded MP3.
-String? _otherFormats(DidlItem item, DidlResource? res) {
-  final other = {for (final r in item.resources) r.formatLabel}..remove(res?.formatLabel);
-  return other.isEmpty ? null : other.join(', ');
 }
 
 /// albumArtist -> Album artist.

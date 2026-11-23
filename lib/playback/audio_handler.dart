@@ -647,7 +647,11 @@ class MinstrelAudioHandler extends BaseAudioHandler with SeekHandler {
       artUri: i.albumArt,
       duration: duration ?? _known(e.resource.duration) ?? _known(i.duration),
       displaySubtitle: composer != null ? '$composer · ${i.performer ?? ''}' : i.performer,
-      extras: {'format': e.resource.formatLabel, 'composer': ?composer},
+      extras: {
+        'format': e.resource.formatLabel,
+        if (i.otherFormats(e.resource) case final other when other.isNotEmpty) 'otherFormats': other.join(', '),
+        'composer': ?composer,
+      },
     );
   }
 
