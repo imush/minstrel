@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:minstrel_core/minstrel_core.dart';
 
 /// One entry in the car's menus: a folder to open, a track to play, or both.
@@ -59,7 +60,7 @@ abstract class CarHistoryStore {
 /// c|<udn>|<container id>    a server folder (0 is a server's top)
 /// t|<udn>|<parent>|<item>   a track; playing it plays its folder from it
 /// a|<udn>|<object id>       a search result: an album plays whole
-/// r|<node id>               a node that wouldn't load: opens it again
+/// r|<node id>|<n>           a node that wouldn't load: opens it again
 /// ```
 class CarLibrary {
   /// The top level, which holds the tabs.
@@ -102,7 +103,24 @@ class CarLibrary {
         const CarNode(library, 'Library', browsable: true),
       ];
 
-  Future<List<CarNode>> children(String id, {int? page, int? pageSize}) async {
+  /// Folders that wouldn't load, by the id the car shows them under, each
+  /// with the folder it stands for. Tried again in the background, and the
+  /// car told to ask again once one loads: a driver back in signal should
+  /// not have to find the row and press it.
+  final _failed = <String, String>{};
+  Timer? _retrying;
+  int _attempt = 0;
+
+  static const retryEvery = Duration(seconds: 10);
+
+  /// Gives up after this many background tries; the row still works.
+  static const _maxRetries = 30;
+  int _retries = 0;
+
+  Future<List<CarNode>> children(String id, {int? page, int? pageSize}) =>
+      _children(id, shownAs: id, page: page, pageSize: pageSize);
+
+  Future<List<CarNode>> _children(String id, {required String shownAs, int? page, int? pageSize}) async {
     if (id == history) return _history();
     if (id == library) {
       return [
@@ -112,7 +130,7 @@ class CarLibrary {
     }
     final parts = _parts(id);
     // Pressed after it failed: ask for the node it stands for, afresh.
-    if (parts case ['r', final target]) return children(target, page: page, pageSize: pageSize);
+    if (parts case ['r', final target, ...]) return _children(target, shownAs: id, page: page, pageSize: pageSize);
     if (parts.length != 3 || parts[0] != 'c') return const [];
     final udn = parts[1], containerId = parts[2];
     final start = page != null && pageSize != null ? page * pageSize : 0;
@@ -130,6 +148,9 @@ class CarLibrary {
       // behind these menus time out quietly. An empty list is read as a
       // folder with nothing in it, so say what happened and give the driver
       // one thing to press.
+      _failed[shownAs] = id;
+      _retries = 0;
+      _retrying ??= Timer.periodic(retryEvery, (_) => retryFailed());
       return [_trouble(id, udn)];
     }
     return [for (final o in objects) ?_node(udn, containerId, o)];
@@ -144,9 +165,35 @@ class CarLibrary {
     // The action goes on the title: it is the line a driver reads at a
     // glance, and the one thing to do here is press it. Why it is there
     // goes underneath, for whoever has a moment to look.
-    return CarNode(_id(['r', id]), 'Try again',
+    // A new id each time: Android Auto keeps the lists it has loaded, and
+    // pressing a row it has seen before could bring back the same failure
+    // without asking again, which looked like a row that did nothing.
+    return CarNode(_id(['r', id, '${_attempt++}']), 'Try again',
         subtitle: 'No connection — couldn\'t reach ${name ?? 'the server'}',
         browsable: true);
+  }
+
+  /// Tries each folder that wouldn't load again, and tells the car to ask
+  /// again for those that now do.
+  @visibleForTesting
+  Future<void> retryFailed() async {
+    for (final target in {..._failed.values}) {
+      final [_, udn, containerId] = _parts(target);
+      try {
+        await source.browse(udn, containerId, count: 1);
+      } on Object {
+        continue;
+      }
+      final shown = [for (final e in _failed.entries) if (e.value == target) e.key];
+      for (final id in shown) {
+        _failed.remove(id);
+        _changed.add(id);
+      }
+    }
+    if (_failed.isEmpty || ++_retries >= _maxRetries) {
+      _retrying?.cancel();
+      _retrying = null;
+    }
   }
 
   /// Artists, albums and tracks matching [query], from every server that

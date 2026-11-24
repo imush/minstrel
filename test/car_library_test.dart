@@ -152,6 +152,35 @@ void main() {
         ['Allegro ma non troppo', 'Andante molto mosso', 'Allegro']);
   });
 
+  test('each Try again is a new row, so the car asks afresh when it is pressed', () async {
+    final server = (await car.children(CarLibrary.library)).single.id;
+    source.failWith = const SocketException('Connection timed out');
+    final first = (await car.children(server)).single;
+    final again = (await car.children(first.id)).single;
+    expect(again.title, 'Try again');
+    expect(again.id, isNot(first.id));
+  });
+
+  test('back in signal, a folder that would not load reloads by itself', () async {
+    final server = (await car.children(CarLibrary.library)).single.id;
+    source.failWith = const SocketException('Connection timed out');
+    final trouble = (await car.children(server)).single;
+    await car.children(trouble.id); // pressed, still out of signal
+    final asked = <String>[];
+    car.changed.listen(asked.add);
+
+    await car.retryFailed();
+    await Future<void>.delayed(Duration.zero);
+    expect(asked, isEmpty, reason: 'still out of signal');
+
+    source.failWith = null;
+    await car.retryFailed();
+    await Future<void>.delayed(Duration.zero);
+    // Both the folder and the page opened from its row are asked for again.
+    expect(asked, unorderedEquals([server, trouble.id]));
+    expect((await car.children(server)).single.title, isNot('Try again'));
+  });
+
   test('a track queues the album from that track onwards, and is remembered', () async {
     final album = (await car.children(
             (await car.children((await car.children((await car.children(CarLibrary.library)).single.id)).single.id))
